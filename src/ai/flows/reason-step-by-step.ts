@@ -6,7 +6,7 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const ReasonStepByStepInputSchema = z.object({
-  question: z.string().describe('The question to be answered.'),
+  question: z.string().describe('The question to be answered or the user input.'),
   subject: z.enum(['Biology', 'Combined Maths', 'Physics', 'Chemistry']).describe('The subject of the question.'),
   language: z.enum(['Sinhala', 'English']).describe('The language to respond in.'),
   fileDataUri: z
@@ -20,8 +20,8 @@ const ReasonStepByStepInputSchema = z.object({
 export type ReasonStepByStepInput = z.infer<typeof ReasonStepByStepInputSchema>;
 
 const ReasonStepByStepOutputSchema = z.object({
-  reasoning: z.array(z.string()).describe('A step-by-step breakdown of the reasoning process.'),
-  answer: z.string().describe('The final answer to the question.'),
+  reasoning: z.array(z.string()).describe("A step-by-step breakdown of the reasoning process. This should be an empty array if the user's input is a greeting or does not require detailed reasoning."),
+  answer: z.string().describe("The final answer to the question, or a simple response if the input is a greeting/statement not requiring detailed steps."),
 });
 
 export type ReasonStepByStepOutput = z.infer<typeof ReasonStepByStepOutputSchema>;
@@ -35,22 +35,22 @@ const reasonStepByStepPrompt = ai.definePrompt({
   input: {schema: ReasonStepByStepInputSchema},
   output: {schema: ReasonStepByStepOutputSchema},
   prompt: `You are an expert tutor for GCE Advanced Level students, skilled in Biology, Combined Maths, Physics, and Chemistry.
-You will answer questions in either Sinhala or English, providing a step-by-step breakdown of your reasoning.
+You will respond in the language: {{{language}}}.
 
-Subject: {{{subject}}}
-Language: {{{language}}}
-
-Question: {{{question}}}
+Analyze the user's input: "{{{question}}}"
 {{#if fileDataUri}}
-File: {{media url=fileDataUri}}
+Additional context from the provided file: {{media url=fileDataUri}}
 {{/if}}
 
-Reasoning Steps:
-{{#each reasoning}}
-- {{{this}}}
-{{/each}}
+If the user's input is a question related to the subject "{{{subject}}}" that requires a detailed explanation:
+- Populate the 'reasoning' field with a step-by-step breakdown of your thinking process.
+- Populate the 'answer' field with the final solution or explanation.
 
-Final Answer: {{{answer}}}`,
+If the user's input is a simple greeting (e.g., "hi", "hello"), a general statement not requiring a subject-specific explanation, a polite phrase (e.g., "thank you"), or something that cannot be meaningfully answered as a subject question:
+- The 'reasoning' field MUST be an empty array.
+- The 'answer' field should contain a brief, friendly, and appropriate response.
+
+Ensure your response is in {{{language}}}.`,
 });
 
 const reasonStepByStepFlow = ai.defineFlow(
@@ -64,3 +64,4 @@ const reasonStepByStepFlow = ai.defineFlow(
     return output!;
   }
 );
+
