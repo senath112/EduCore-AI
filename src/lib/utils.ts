@@ -1,3 +1,4 @@
+import React, { type ReactNode } from "react";
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
@@ -17,3 +18,17 @@ export const fileToDataUri = (file: File): Promise<string> => {
     reader.readAsDataURL(file);
   });
 };
+
+export function formatBoldText(text: string): ReactNode[] {
+  if (!text) return [];
+  const parts = text.split('**');
+  return parts.map((part, index) => {
+    if (index % 2 === 1) {
+      // Use React.createElement to avoid JSX parsing issues in a .ts file
+      return React.createElement('strong', { key: index }, part);
+    }
+    // When index % 2 === 0, part is a string. This is a valid ReactNode.
+    return part as ReactNode; 
+  });
+}
+

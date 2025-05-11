@@ -2,9 +2,8 @@
 "use client";
 
 import { User, Bot, FileText } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { Card, CardContent } from "@/components/ui/card";
+import { cn, formatBoldText } from "@/lib/utils";
 import type { Message, ChatMessageContentReasoning, ChatMessageContentSummary } from "@/types";
 
 interface ChatMessageProps {
@@ -35,26 +34,26 @@ export function ChatMessage({ message }: ChatMessageProps) {
             </div>
           )}
           {typeof message.content === "string" && (
-            <p className="whitespace-pre-wrap">{message.content}</p>
+            <p className="whitespace-pre-wrap">{formatBoldText(message.content)}</p>
           )}
           {isReasoning(message.content) && (
             <div>
               <h4 className="font-semibold mb-2 text-lg">Reasoning Steps:</h4>
               <ul className="list-disc list-inside space-y-1 mb-3">
                 {message.content.reasoning.map((step, index) => (
-                  <li key={index}>{step}</li>
+                  <li key={index}>{formatBoldText(step)}</li>
                 ))}
               </ul>
               <h4 className="font-semibold mb-1 text-lg">Final Answer:</h4>
-              <p className="whitespace-pre-wrap">{message.content.answer}</p>
+              <p className="whitespace-pre-wrap">{formatBoldText(message.content.answer)}</p>
             </div>
           )}
           {isSummary(message.content) && (
             <div>
               <h4 className="font-semibold mb-2 text-lg">Summary:</h4>
-              <p className="whitespace-pre-wrap mb-3">{message.content.summary}</p>
+              <p className="whitespace-pre-wrap mb-3">{formatBoldText(message.content.summary)}</p>
               <h4 className="font-semibold mb-1 text-lg">Explanations:</h4>
-              <p className="whitespace-pre-wrap">{message.content.explanations}</p>
+              <p className="whitespace-pre-wrap">{formatBoldText(message.content.explanations)}</p>
             </div>
           )}
           <p className="text-xs text-muted-foreground/80 mt-2 text-right">
