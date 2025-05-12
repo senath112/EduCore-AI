@@ -53,7 +53,7 @@ export function ChatInputArea({ onSendMessage, onSummarizeFile, isLoading }: Cha
   };
 
   return (
-    <div className="bg-card p-4 border-t border-border shadow-sm">
+    <div className="bg-card p-4 border-t border-border shadow-md">
       <form onSubmit={handleSubmit} className="container mx-auto flex flex-col gap-2">
         {selectedFile && (
           <div className="flex items-center justify-between p-2 border border-border rounded-md bg-background text-sm">
