@@ -17,14 +17,20 @@ export function EduAiTutorClient() {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  // Effect to add initial greeting message
+  // Effect to add initial greeting messages
   useEffect(() => {
     setMessages([
       {
-        id: "initial-greeting",
+        id: "initial-greeting-1",
+        role: "system",
+        content: "Hello!",
+        timestamp: new Date(),
+      },
+      {
+        id: "initial-greeting-2",
         role: "system",
         content: `Welcome to EduAI Tutor! I'm here to help you with ${selectedSubject} in ${selectedLanguage}. Ask me anything!`,
-        timestamp: new Date(),
+        timestamp: new Date(Date.now() + 1), // Ensure slightly different timestamp for ordering
       },
     ]);
   }, []); // Empty dependency array means this runs once on mount
@@ -42,8 +48,7 @@ export function EduAiTutorClient() {
 
     setIsLoading(true);
     const userMessageContent = messageText || (file ? `Question about the attached file: ${file.name}` : "File attached.");
-    const userMessageFile = file ? { name: file.name, dataUri: await fileToDataUri(file) } : undefined;
-    
+    // Do not pass dataUri to addMessage for user message, it's only needed for the backend
     addMessage("user", userMessageContent, file ? {name: file.name} : undefined);
 
     let fileDataUri: string | undefined;
@@ -120,3 +125,4 @@ export function EduAiTutorClient() {
     </div>
   );
 }
+
