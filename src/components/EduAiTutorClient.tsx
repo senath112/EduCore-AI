@@ -33,7 +33,7 @@ export function EduAiTutorClient() {
         timestamp: new Date(Date.now() + 1), // Ensure slightly different timestamp for ordering
       },
     ]);
-  }, []); // Empty dependency array means this runs once on mount
+  }, [selectedSubject, selectedLanguage]); 
 
 
   const addMessage = (role: "user" | "assistant" | "system", content: Message["content"], file?: { name: string, dataUri?: string }) => {
