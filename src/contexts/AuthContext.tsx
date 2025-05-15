@@ -155,20 +155,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // If snapshot exists, onAuthStateChanged will handle setting the user with existing data.
       return firebaseUser;
     } catch (error: any) {
-      console.error("Google sign-in error:", error);
-      if (error.code === 'auth/popup-closed-by-user') {
-        setAuthError("Google Sign-In was cancelled or the popup was closed. This can happen if you closed it manually, due to browser issues (try disabling extensions or using an incognito window), or if there's a misconfiguration in your Google Cloud/Firebase project settings.");
-      } else if (error.code === 'auth/popup-blocked') {
-        setAuthError("Google Sign-In popup was blocked by your browser. Please allow popups for this site and try again.");
-      } else if (error.code === 'auth/cancelled-popup-request') {
-        setAuthError("Multiple Google Sign-In popups were opened, or a new popup was opened before the previous one completed. Please try again.");
-      } else if (error.code === 'auth/operation-not-allowed') {
-         setAuthError("Google Sign-In is not enabled for this project. Please check your Firebase console settings (Authentication -> Sign-in method).");
-      } else if (error.code === 'auth/unauthorized-domain') {
-         setAuthError("This domain is not authorized for Google Sign-In. Please check your Firebase and Google Cloud console 'Authorized domains' and 'Authorized JavaScript origins' settings.");
-      } else {
-        setAuthError(`Failed to sign in with Google: ${error.message || 'An unknown error occurred.'} (Code: ${error.code || 'N/A'})`);
+      console.error("Google Sign-In error object:", error); // Log the full error object
+      let specificMessage = `Failed to sign in with Google: ${error.message || 'An unknown error occurred.'}`;
+
+      switch (error.code) {
+        case 'auth/popup-closed-by-user':
+          specificMessage = "Google Sign-In popup was closed. If you did not close it manually, and have already tried disabling browser extensions or using an incognito window, this strongly suggests a misconfiguration in your Firebase or Google Cloud project settings. Please meticulously review your Authorized JavaScript origins, Authorized redirect URIs in the Google Cloud Console, and ensure Google is enabled as a provider with correct web SDK configuration in Firebase Authentication settings.";
+          break;
+        case 'auth/popup-blocked':
+          specificMessage = "Google Sign-In popup was blocked by your browser. Please allow popups for this site and try again.";
+          break;
+        case 'auth/cancelled-popup-request':
+          specificMessage = "Multiple Google Sign-In popups were opened, or a new popup was opened before the previous one completed. Please try again.";
+          break;
+        case 'auth/operation-not-allowed':
+          specificMessage = "Google Sign-In is not enabled for this project. Please check your Firebase console settings (Authentication -> Sign-in method) and ensure the web SDK configuration is correctly set up if you are using a custom setup.";
+          break;
+        case 'auth/unauthorized-domain':
+          specificMessage = "This domain is not authorized for Google Sign-In. Please check your Firebase (Authentication -> Settings -> Authorized domains) and Google Cloud console (Credentials -> OAuth 2.0 Client ID -> Authorized JavaScript origins and Authorized redirect URIs) settings.";
+          break;
+        // You can add more specific cases here if they become relevant
       }
+      setAuthError(`${specificMessage} (Code: ${error.code || 'N/A'})`);
       return null;
     } finally {
       setLoading(false);
