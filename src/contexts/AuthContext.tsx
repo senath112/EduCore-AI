@@ -10,6 +10,8 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  GoogleAuthProvider,
+  signInWithPopup,
 } from "firebase/auth";
 import { ref, set, get, serverTimestamp } from "firebase/database";
 import type { AppUser } from "@/types";
@@ -21,6 +23,7 @@ interface AuthContextType {
   setAuthError: Dispatch<SetStateAction<string | null>>;
   signUp: (email: string, pass: string, school: string, alYear: string) => Promise<FirebaseUser | null>;
   logIn: (email: string, pass: string) => Promise<FirebaseUser | null>;
+  signInWithGoogle: () => Promise<FirebaseUser | null>;
   logOut: () => Promise<void>;
 }
 
@@ -34,7 +37,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // Fetch additional user data from Realtime Database
         const userRef = ref(db, `users/${firebaseUser.uid}`);
         const snapshot = await get(userRef);
         if (snapshot.exists()) {
@@ -42,18 +44,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setUser({
             uid: firebaseUser.uid,
             email: firebaseUser.email,
-            displayName: firebaseUser.displayName || firebaseUser.email,
+            displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0], // Use Google's display name if available
             school: dbUser.school,
             alYear: dbUser.alYear,
           });
         } else {
-          // User exists in Auth but not in DB (e.g. if DB write failed during signup or manual deletion)
-          // You might want to create a default profile here or handle as an error
-           setUser({
+           // User from Auth (e.g. Google Sign In first time) but not yet in DB
+           // Create a basic profile, school/alYear can be updated later
+          const newUserProfile: AppUser = {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
-            displayName: firebaseUser.displayName || firebaseUser.email,
+            displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
+            school: '', // Initialize as empty
+            alYear: '', // Initialize as empty
+          };
+          await set(ref(db, `users/${firebaseUser.uid}`), {
+            email: firebaseUser.email,
+            displayName: firebaseUser.displayName,
+            createdAt: serverTimestamp(),
+            school: newUserProfile.school,
+            alYear: newUserProfile.alYear,
           });
+          setUser(newUserProfile);
         }
       } else {
         setUser(null);
@@ -69,18 +81,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
       const firebaseUser = userCredential.user;
-      // Save additional user info to Realtime Database
       await set(ref(db, `users/${firebaseUser.uid}`), {
         email: firebaseUser.email,
+        displayName: firebaseUser.email?.split('@')[0], // Default display name from email
         school: school,
         alYear: alYear,
-        createdAt: serverTimestamp(), // Use serverTimestamp for consistency
+        createdAt: serverTimestamp(),
       });
-      // Manually set user in context as onAuthStateChanged might take a moment
        setUser({
           uid: firebaseUser.uid,
           email: firebaseUser.email,
-          displayName: firebaseUser.displayName || firebaseUser.email,
+          displayName: firebaseUser.email?.split('@')[0],
           school: school,
           alYear: alYear,
         });
@@ -99,11 +110,54 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setAuthError(null);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, pass);
-      // onAuthStateChanged will handle setting the user state with DB data
       return userCredential.user;
     } catch (error: any) {
       console.error("Login error:", error);
       setAuthError(error.message || "Failed to log in.");
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signInWithGoogle = async (): Promise<FirebaseUser | null> => {
+    setLoading(true);
+    setAuthError(null);
+    const provider = new GoogleAuthProvider();
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const firebaseUser = result.user;
+      
+      // Check if user exists in DB, if not, create an entry
+      const userRef = ref(db, `users/${firebaseUser.uid}`);
+      const snapshot = await get(userRef);
+      if (!snapshot.exists()) {
+        await set(userRef, {
+          email: firebaseUser.email,
+          displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
+          school: '', // Google Sign-In doesn't provide this
+          alYear: '', // Google Sign-In doesn't provide this
+          createdAt: serverTimestamp(),
+        });
+         setUser({ // Update context immediately
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
+          school: '',
+          alYear: '',
+        });
+      } else {
+        // User exists, onAuthStateChanged will update the context with DB data
+      }
+      return firebaseUser;
+    } catch (error: any) {
+      console.error("Google sign-in error:", error);
+      // Handle common errors like popup closed by user
+      if (error.code === 'auth/popup-closed-by-user') {
+        setAuthError("Google Sign-In was cancelled.");
+      } else {
+        setAuthError(error.message || "Failed to sign in with Google.");
+      }
       return null;
     } finally {
       setLoading(false);
@@ -115,7 +169,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setAuthError(null);
     try {
       await signOut(auth);
-      setUser(null); // Clear user state immediately
+      setUser(null); 
     } catch (error: any) {
       console.error("Logout error:", error);
       setAuthError(error.message || "Failed to log out.");
@@ -125,7 +179,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, authError, setAuthError, signUp, logIn, logOut }}>
+    <AuthContext.Provider value={{ user, loading, authError, setAuthError, signUp, logIn, signInWithGoogle, logOut }}>
       {children}
     </AuthContext.Provider>
   );

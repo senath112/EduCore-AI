@@ -10,16 +10,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { GraduationCap } from "lucide-react";
+import { GraduationCap, ChromeIcon } from "lucide-react"; // Using ChromeIcon as a generic browser/Google icon
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const { logIn, authError, setAuthError, loading, user } = useAuth();
+  const { logIn, signInWithGoogle, authError, setAuthError, loading, user } = useAuth();
   const router = useRouter();
 
   if (user) {
-    router.push("/"); // Redirect if already logged in
+    router.push("/"); 
     return null;
   }
 
@@ -27,6 +27,14 @@ export default function LoginPage() {
     e.preventDefault();
     setAuthError(null);
     const loggedInUser = await logIn(email, password);
+    if (loggedInUser) {
+      router.push("/");
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setAuthError(null);
+    const loggedInUser = await signInWithGoogle();
     if (loggedInUser) {
       router.push("/");
     }
@@ -43,13 +51,13 @@ export default function LoginPage() {
           <CardDescription>Log in to access EduCore AI.</CardDescription>
         </CardHeader>
         <CardContent>
+          {authError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertTitle>Login Failed</AlertTitle>
+              <AlertDescription>{authError}</AlertDescription>
+            </Alert>
+          )}
           <form onSubmit={handleSubmit} className="space-y-6">
-            {authError && (
-              <Alert variant="destructive">
-                <AlertTitle>Login Failed</AlertTitle>
-                <AlertDescription>{authError}</AlertDescription>
-              </Alert>
-            )}
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -78,8 +86,22 @@ export default function LoginPage() {
               {loading ? "Logging In..." : "Log In"}
             </Button>
           </form>
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">
+                Or continue with
+              </span>
+            </div>
+          </div>
+          <Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={loading}>
+            <ChromeIcon className="mr-2 h-4 w-4" /> 
+            Sign in with Google
+          </Button>
         </CardContent>
-        <CardFooter className="flex flex-col items-center text-sm">
+        <CardFooter className="flex flex-col items-center text-sm mt-4">
           <p>
             Don&apos;t have an account?{" "}
             <Link href="/signup" className="font-medium text-accent hover:underline">
