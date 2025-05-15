@@ -49,12 +49,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             alYear: dbUser.alYear,
           });
         } else {
+          // This case handles users who signed up with Google but might not have school/alYear yet
+          // or users whose DB entry was somehow missed.
+          const displayName = firebaseUser.displayName || firebaseUser.email?.split('@')[0];
           const newUserProfile: AppUser = {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
-            displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
-            school: '', 
-            alYear: '', 
+            displayName: displayName,
+            school: '', // Default to empty if not found
+            alYear: '', // Default to empty if not found
           };
           await set(ref(db, `users/${firebaseUser.uid}`), {
             email: firebaseUser.email,
@@ -109,6 +112,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setAuthError(null);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, pass);
+      // User data will be fetched by onAuthStateChanged
       return userCredential.user;
     } catch (error: any) {
       console.error("Login error:", error);
@@ -131,6 +135,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const snapshot = await get(userRef);
       if (!snapshot.exists()) {
         const displayName = firebaseUser.displayName || firebaseUser.email?.split('@')[0];
+        // For Google Sign-In, school and alYear are not collected upfront
+        // So we initialize them as empty strings.
         await set(userRef, {
           email: firebaseUser.email,
           displayName: displayName,
@@ -142,15 +148,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           uid: firebaseUser.uid,
           email: firebaseUser.email,
           displayName: displayName,
-          school: '',
+          school: '', // Ensure these are set for the local state too
           alYear: '',
         });
       }
+      // If snapshot exists, onAuthStateChanged will handle setting the user with existing data.
       return firebaseUser;
     } catch (error: any) {
       console.error("Google sign-in error:", error);
       if (error.code === 'auth/popup-closed-by-user') {
-        setAuthError("Google Sign-In was cancelled or the popup was closed before completion.");
+        setAuthError("Google Sign-In was cancelled or the popup was closed. This can happen if you closed it manually, due to browser issues (try disabling extensions or using an incognito window), or if there's a misconfiguration in your Google Cloud/Firebase project settings.");
       } else if (error.code === 'auth/popup-blocked') {
         setAuthError("Google Sign-In popup was blocked by your browser. Please allow popups for this site and try again.");
       } else if (error.code === 'auth/cancelled-popup-request') {
