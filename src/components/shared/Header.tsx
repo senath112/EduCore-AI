@@ -4,8 +4,8 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState } from 'react'; 
-import { GraduationCap, Languages, BookOpen, LogOut, LogIn, UserPlus, CreditCard, ShoppingBag } from "lucide-react";
+import { useState, useEffect } from 'react'; 
+import { GraduationCap, Languages, BookOpen, LogOut, LogIn, UserPlus, CreditCard, ShoppingBag, UserCog } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
@@ -21,6 +21,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog } from "@/components/ui/dialog"; 
 import { BuyCreditsDialog } from "@/components/BuyCreditsDialog"; 
+import { CompleteProfileDialog } from "@/components/dialogs/CompleteProfileDialog";
 
 
 interface HeaderProps {
@@ -39,10 +40,19 @@ export function AppHeader({
   selectedSubject,
   onSubjectChange,
 }: HeaderProps) {
-  const { user, logOut, loading } = useAuth();
+  const { user, logOut, loading, profileCompletionStatus } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [isBuyCreditsDialogOpen, setIsBuyCreditsDialogOpen] = useState(false);
+  const [isCompleteProfileDialogOpen, setIsCompleteProfileDialogOpen] = useState(false);
+
+  useEffect(() => {
+    if (user && profileCompletionStatus === 'incomplete') {
+      setIsCompleteProfileDialogOpen(true);
+    } else {
+      setIsCompleteProfileDialogOpen(false);
+    }
+  }, [user, profileCompletionStatus]);
 
   const handleLogout = async () => {
     await logOut();
@@ -136,6 +146,12 @@ export function AppHeader({
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
+                  {profileCompletionStatus === 'incomplete' && (
+                    <DropdownMenuItem onSelect={() => setIsCompleteProfileDialogOpen(true)} className="cursor-pointer text-accent">
+                      <UserCog className="mr-2 h-4 w-4" />
+                      <span>Complete Profile</span>
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem onSelect={() => setIsBuyCreditsDialogOpen(true)} className="cursor-pointer">
                     <ShoppingBag className="mr-2 h-4 w-4" />
                     <span>Buy Credits</span>
@@ -170,6 +186,22 @@ export function AppHeader({
       <Dialog open={isBuyCreditsDialogOpen} onOpenChange={setIsBuyCreditsDialogOpen}>
         <BuyCreditsDialog />
       </Dialog>
+      {user && ( // Only render CompleteProfileDialog if user exists
+        <Dialog open={isCompleteProfileDialogOpen} 
+          onOpenChange={(open) => {
+            // Prevent closing via Escape or overlay click if profile is incomplete
+            if (!open && profileCompletionStatus === 'incomplete') return; 
+            setIsCompleteProfileDialogOpen(open);
+          }}>
+          <CompleteProfileDialog 
+            user={user} 
+            onClose={() => {
+              setIsCompleteProfileDialogOpen(false);
+              // AuthContext will set profileCompletionStatus to 'complete' upon successful update
+            }}
+          />
+        </Dialog>
+      )}
     </>
   );
 }

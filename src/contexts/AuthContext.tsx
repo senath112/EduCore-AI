@@ -20,17 +20,22 @@ import type { AppUser } from "@/types";
 
 const INITIAL_CREDITS = 10;
 
+type ProfileCompletionStatus = 'pending' | 'incomplete' | 'complete';
+
 interface AuthContextType {
   user: AppUser | null;
   loading: boolean;
   authError: string | null;
   setAuthError: Dispatch<SetStateAction<string | null>>;
+  profileCompletionStatus: ProfileCompletionStatus;
   signUp: (email: string, pass: string, school: string, alYear: string, mobileNumber: string) => Promise<FirebaseUser | null>;
   logIn: (email: string, pass: string) => Promise<FirebaseUser | null>;
   signInWithGoogle: () => Promise<FirebaseUser | null>;
   logOut: () => Promise<void>;
   sendPasswordReset: (email: string) => Promise<boolean>;
   updateLocalUserCredits: (newCreditAmount: number) => void;
+  updateUserProfileDetails: (details: { school: string; alYear: string; mobileNumber: string }) => Promise<boolean>;
+  setProfileCompletionStatus: Dispatch<SetStateAction<ProfileCompletionStatus>>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -39,35 +44,46 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [profileCompletionStatus, setProfileCompletionStatus] = useState<ProfileCompletionStatus>('pending');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setLoading(true);
       if (firebaseUser) {
         const userRef = ref(db, `users/${firebaseUser.uid}`);
         const snapshot = await get(userRef);
         if (snapshot.exists()) {
           const dbUser = snapshot.val();
-          setUser({
+          const currentUserData: AppUser = {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
             displayName: firebaseUser.displayName || dbUser.displayName || firebaseUser.email?.split('@')[0],
-            school: dbUser.school,
-            alYear: dbUser.alYear,
-            mobileNumber: dbUser.mobileNumber,
+            school: dbUser.school || '',
+            alYear: dbUser.alYear || '',
+            mobileNumber: dbUser.mobileNumber || '',
             credits: dbUser.credits !== undefined ? dbUser.credits : INITIAL_CREDITS,
-          });
+          };
+          setUser(currentUserData);
+
+          if (!currentUserData.school || !currentUserData.alYear || !currentUserData.mobileNumber) {
+            setProfileCompletionStatus('incomplete');
+          } else {
+            setProfileCompletionStatus('complete');
+          }
+
           if (dbUser.credits === undefined) {
              await update(userRef, { credits: INITIAL_CREDITS, updatedAt: serverTimestamp() });
           } else {
-             await update(userRef, { updatedAt: serverTimestamp() }); // Update last active time
+             await update(userRef, { updatedAt: serverTimestamp() });
           }
         } else {
+          // This case handles if a user exists in Auth but not in DB (e.g., Google sign-in for the very first time)
           const displayName = firebaseUser.displayName || firebaseUser.email?.split('@')[0];
           const newUserProfile: AppUser = {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
             displayName: displayName,
-            school: '', // For Google Sign-In, these might be empty initially
+            school: '', 
             alYear: '',
             mobileNumber: '',
             credits: INITIAL_CREDITS,
@@ -83,9 +99,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             credits: newUserProfile.credits,
           });
           setUser(newUserProfile);
+          setProfileCompletionStatus('incomplete'); // New user, profile is incomplete
         }
       } else {
         setUser(null);
+        setProfileCompletionStatus('pending'); 
       }
       setLoading(false);
     });
@@ -100,7 +118,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const firebaseUser = userCredential.user;
       const displayName = firebaseUser.email?.split('@')[0];
       const userCredits = INITIAL_CREDITS;
-      await set(ref(db, `users/${firebaseUser.uid}`), {
+      const newUserDbData = {
         email: firebaseUser.email,
         displayName: displayName,
         school: school,
@@ -109,8 +127,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         credits: userCredits,
-      });
-       setUser({ // Update local user state immediately
+      };
+      await set(ref(db, `users/${firebaseUser.uid}`), newUserDbData);
+       setUser({ 
           uid: firebaseUser.uid,
           email: firebaseUser.email,
           displayName: displayName,
@@ -119,6 +138,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           mobileNumber: mobileNumber,
           credits: userCredits,
         });
+      setProfileCompletionStatus('complete');
       return firebaseUser;
     } catch (error: any) {
       console.error("Signup error:", error);
@@ -132,9 +152,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logIn = async (email: string, pass: string): Promise<FirebaseUser | null> => {
     setLoading(true);
     setAuthError(null);
+    setProfileCompletionStatus('pending');
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, pass);
-      // User data will be fetched by onAuthStateChanged
+      // User data and profile completion status will be handled by onAuthStateChanged
       return userCredential.user;
     } catch (error: any) {
       console.error("Login error:", error);
@@ -148,16 +169,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
  const signInWithGoogle = async (): Promise<FirebaseUser | null> => {
     setLoading(true);
     setAuthError(null);
+    setProfileCompletionStatus('pending');
     const provider = new GoogleAuthProvider();
     try {
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
       
-      // User data (including checking if new or existing for credit initialization)
-      // will be handled by the onAuthStateChanged listener.
-      // We just need to ensure the basic profile info is there if it's a truly new DB entry.
       const userRef = ref(db, `users/${firebaseUser.uid}`);
       const snapshot = await get(userRef);
+
       if (!snapshot.exists()) {
         const displayName = firebaseUser.displayName || firebaseUser.email?.split('@')[0];
         await set(userRef, {
@@ -168,15 +188,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           mobileNumber: '',
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
-          credits: INITIAL_CREDITS, // Ensure new Google sign-ups get initial credits
+          credits: INITIAL_CREDITS,
         });
-         // onAuthStateChanged will subsequently pick this up and set the user state.
+        // onAuthStateChanged will subsequently pick this up, set user, and set profileCompletionStatus to 'incomplete'
       } else {
-        // If user exists, just update their last active time
         await update(userRef, { updatedAt: serverTimestamp() });
+        // onAuthStateChanged will determine if profile is incomplete for existing Google users
       }
       return firebaseUser;
-    } catch (error: any) {
+    } catch (error: any)
+    {
       console.error("Google Sign-In error object:", error); 
       let specificMessage = `Failed to sign in with Google: ${error.message || 'An unknown error occurred.'}`;
       
@@ -225,6 +246,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       await signOut(auth);
       setUser(null); 
+      setProfileCompletionStatus('pending');
     } catch (error: any) {
       console.error("Logout error:", error);
       setAuthError(error.message || "Failed to log out.");
@@ -240,8 +262,54 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
+  const updateUserProfileDetails = async (details: { school: string; alYear: string; mobileNumber: string }): Promise<boolean> => {
+    if (!user) {
+      setAuthError("No user logged in to update profile.");
+      return false;
+    }
+    setLoading(true);
+    setAuthError(null);
+    try {
+      const userRef = ref(db, `users/${user.uid}`);
+      await update(userRef, {
+        school: details.school,
+        alYear: details.alYear,
+        mobileNumber: details.mobileNumber,
+        updatedAt: serverTimestamp(),
+      });
+      setUser(prevUser => prevUser ? ({
+        ...prevUser,
+        school: details.school,
+        alYear: details.alYear,
+        mobileNumber: details.mobileNumber,
+      }) : null);
+      setProfileCompletionStatus('complete');
+      return true;
+    } catch (error: any) {
+      console.error("Update profile error:", error);
+      setAuthError(error.message || "Failed to update profile.");
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, authError, setAuthError, signUp, logIn, signInWithGoogle, logOut, sendPasswordReset, updateLocalUserCredits }}>
+    <AuthContext.Provider value={{ 
+        user, 
+        loading, 
+        authError, 
+        setAuthError, 
+        profileCompletionStatus,
+        signUp, 
+        logIn, 
+        signInWithGoogle, 
+        logOut, 
+        sendPasswordReset, 
+        updateLocalUserCredits,
+        updateUserProfileDetails,
+        setProfileCompletionStatus
+    }}>
       {children}
     </AuthContext.Provider>
   );
