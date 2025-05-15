@@ -2,6 +2,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
 import { AppHeader } from "@/components/shared/Header";
 import { ChatMessagesList } from "@/components/chat/ChatMessagesList";
 import { ChatInputArea } from "@/components/chat/ChatInputArea";
@@ -9,31 +11,44 @@ import { handleTutorQueryAction, handleSummarizeFileAction } from "@/lib/actions
 import { fileToDataUri } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import type { Language, Subject, Message } from "@/types";
+import { Skeleton } from "@/components/ui/skeleton";
+
 
 export function EduAiTutorClient() {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedLanguage, setSelectedLanguage] = useState<Language>("English");
   const [selectedSubject, setSelectedSubject] = useState<Subject>("Biology");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false); // For chat operations
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setMessages([
-      {
-        id: "initial-greeting-1",
-        role: "system",
-        content: "Hello!",
-        timestamp: new Date(),
-      },
-      {
-        id: "initial-greeting-2",
-        role: "system",
-        content: `Welcome to EduCore AI! I'm here to help you with ${selectedSubject} in ${selectedLanguage}. Ask me anything!`,
-        timestamp: new Date(Date.now() + 1),
-      },
-    ]);
-  }, [selectedSubject, selectedLanguage]);
+    if (!authLoading && !user) {
+      router.push("/login");
+    }
+  }, [user, authLoading, router]);
+
+  useEffect(() => {
+    if (user) { // Only set initial messages if user is logged in
+      setMessages([
+        {
+          id: "initial-greeting-1",
+          role: "system",
+          content: "Hello!",
+          timestamp: new Date(),
+        },
+        {
+          id: "initial-greeting-2",
+          role: "system",
+          content: `Welcome to EduCore AI! I'm here to help you with ${selectedSubject} in ${selectedLanguage}. Ask me anything!`,
+          timestamp: new Date(Date.now() + 1),
+        },
+      ]);
+    }
+  }, [user, selectedSubject, selectedLanguage]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -48,6 +63,11 @@ export function EduAiTutorClient() {
   };
 
   const handleSendMessage = async (messageText: string, file?: File) => {
+    if (!user) {
+      toast({ title: "Authentication Error", description: "Please log in to send messages.", variant: "destructive" });
+      router.push("/login");
+      return;
+    }
     if (messageText.trim() === "" && !file) return;
 
     setIsLoading(true);
@@ -67,7 +87,7 @@ export function EduAiTutorClient() {
     }
 
     const response = await handleTutorQueryAction({
-      question: messageText.trim(), // Ensure messageText is trimmed for the action as well
+      question: messageText.trim(),
       language: selectedLanguage,
       subject: selectedSubject,
       fileDataUri,
@@ -83,6 +103,11 @@ export function EduAiTutorClient() {
   };
 
   const handleSummarizeFile = async (file: File) => {
+     if (!user) {
+      toast({ title: "Authentication Error", description: "Please log in to summarize files.", variant: "destructive" });
+      router.push("/login");
+      return;
+    }
     setIsLoading(true);
     addMessage("user", `Please summarize this file: ${file.name}`, {name: file.name});
 
@@ -110,6 +135,26 @@ export function EduAiTutorClient() {
     }
     setIsLoading(false);
   };
+
+  if (authLoading) {
+    return (
+      <div className="flex flex-col h-screen items-center justify-center bg-background p-8">
+        <Skeleton className="h-12 w-12 rounded-full mb-4" />
+        <Skeleton className="h-6 w-48 mb-2" />
+        <Skeleton className="h-4 w-32" />
+        <p className="text-muted-foreground mt-4">Loading EduCore AI...</p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    // This should ideally not be reached if redirect in useEffect works, but as a fallback:
+    return (
+       <div className="flex flex-col h-screen items-center justify-center bg-background p-8">
+        <p className="text-muted-foreground">Redirecting to login...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen bg-background">

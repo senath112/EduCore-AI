@@ -1,3 +1,5 @@
+import type { User as FirebaseUser } from "firebase/auth";
+
 export type Language = "English" | "Sinhala";
 export type Subject = "Biology" | "Combined Maths" | "Physics" | "Chemistry";
 
@@ -20,6 +22,14 @@ export interface Message {
   timestamp: Date;
   file?: {
     name: string;
-    dataUri?: string; // Only for display if needed, actual dataUri sent to backend
+    dataUri?: string;
   };
+}
+
+export interface AppUser {
+  uid: string;
+  email: string | null;
+  displayName?: string | null; // Or combine with email for display
+  school?: string;
+  alYear?: string;
 }
