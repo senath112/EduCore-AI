@@ -144,7 +144,7 @@ export function EduAiTutorClient() {
       const deductionResult = await deductUserCreditsAction(user.uid, AI_INTERACTION_COST);
       if (deductionResult.success && deductionResult.newCredits !== undefined) {
         updateLocalUserCredits(deductionResult.newCredits);
-        toast({ title: "Credits Updated", description: `${AI_INTERACTION_COST} credit(s) deducted. New balance: ${deductionResult.newCredits}.`, variant: "default" });
+        toast({ title: "Interaction Complete", description: "Credits have been updated.", variant: "default" });
       } else {
         toast({ title: "Credit Deduction Failed", description: deductionResult.error || "Could not update credits automatically. Please check your balance.", variant: "destructive" });
       }
@@ -191,7 +191,7 @@ export function EduAiTutorClient() {
       const deductionResult = await deductUserCreditsAction(user.uid, AI_INTERACTION_COST);
       if (deductionResult.success && deductionResult.newCredits !== undefined) {
         updateLocalUserCredits(deductionResult.newCredits);
-        toast({ title: "Credits Updated", description: `${AI_INTERACTION_COST} credit(s) deducted. New balance: ${deductionResult.newCredits}.`, variant: "default" });
+        toast({ title: "Summarization Complete", description: "Credits have been updated.", variant: "default" });
       } else {
         toast({ title: "Credit Deduction Failed", description: deductionResult.error || "Could not update credits automatically. Please check your balance.", variant: "destructive" });
       }
