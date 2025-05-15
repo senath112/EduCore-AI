@@ -6,7 +6,7 @@ import { reasonStepByStep, ReasonStepByStepInput, ReasonStepByStepOutput } from 
 import { summarizeFileUpload, SummarizeFileUploadInput, SummarizeFileUploadOutput } from "@/ai/flows/summarize-file-upload";
 import type { Language, Subject } from "@/types";
 import { db } from "@/lib/firebase";
-import { ref, get, update, serverTimestamp } from "firebase/database";
+import { ref, get, update, serverTimestamp, increment } from "firebase/database";
 
 
 interface TutorQueryInput {
@@ -81,12 +81,53 @@ export async function deductUserCreditsAction(
       return { success: false, error: "Insufficient credits." };
     }
 
-    const newCredits = currentCredits - creditsToDeduct;
-    await update(userRef, { credits: newCredits });
+    // Using increment with a negative value for atomic deduction
+    await update(userRef, { credits: increment(-creditsToDeduct) });
+    
+    // Fetch the updated credits to return the new balance
+    const updatedSnapshot = await get(userRef);
+    const newCredits = updatedSnapshot.val().credits;
 
     return { success: true, newCredits };
   } catch (error) {
     console.error("Error deducting credits:", error);
     return { success: false, error: error instanceof Error ? error.message : "Failed to deduct credits." };
+  }
+}
+
+export async function addUserCreditsAction(
+  userId: string,
+  creditsToAdd: number
+): Promise<{ success: boolean; newCredits?: number; error?: string }> {
+  if (!userId) {
+    return { success: false, error: "User ID is required." };
+  }
+  if (creditsToAdd <= 0) {
+    return { success: false, error: "Credits to add must be positive." };
+  }
+
+  const userRef = ref(db, `users/${userId}`);
+
+  try {
+    const snapshot = await get(userRef);
+    if (!snapshot.exists()) {
+      // This case should ideally not happen if the user is logged in
+      // but as a safeguard, we can create the user record if it's missing
+      // or simply return an error. For now, let's return an error.
+      return { success: false, error: "User not found. Cannot add credits." };
+    }
+    
+    // Using increment for atomic addition
+    await update(userRef, { credits: increment(creditsToAdd) });
+
+    // Fetch the updated credits to return the new balance
+    const updatedSnapshot = await get(userRef);
+    const newCredits = updatedSnapshot.val().credits;
+
+    return { success: true, newCredits };
+  } catch (error)
+  {
+    console.error("Error adding credits:", error);
+    return { success: false, error: error instanceof Error ? error.message : "Failed to add credits." };
   }
 }

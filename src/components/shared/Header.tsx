@@ -4,7 +4,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { GraduationCap, Languages, BookOpen, LogOut, LogIn, UserPlus, CreditCard } from "lucide-react";
+import { GraduationCap, Languages, BookOpen, LogOut, LogIn, UserPlus, CreditCard, ShoppingBag } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
@@ -50,7 +50,7 @@ export function AppHeader({
     return email.substring(0, 2).toUpperCase();
   }
 
-  const showAuthControls = !pathname.startsWith('/login') && !pathname.startsWith('/signup') && !pathname.startsWith('/forgot-password');
+  const showAuthControls = !pathname.startsWith('/login') && !pathname.startsWith('/signup') && !pathname.startsWith('/forgot-password') && !pathname.startsWith('/buy-credits');
 
 
   return (
@@ -131,6 +131,11 @@ export function AppHeader({
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => router.push('/buy-credits')} className="cursor-pointer">
+                  <ShoppingBag className="mr-2 h-4 w-4" />
+                  <span>Buy Credits</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
                   <LogOut className="mr-2 h-4 w-4" />
                   <span>Log out</span>
@@ -159,3 +164,4 @@ export function AppHeader({
     </header>
   );
 }
+

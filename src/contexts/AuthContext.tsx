@@ -54,20 +54,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             school: dbUser.school,
             alYear: dbUser.alYear,
             mobileNumber: dbUser.mobileNumber,
-            credits: dbUser.credits !== undefined ? dbUser.credits : INITIAL_CREDITS, // Initialize credits if not present
+            credits: dbUser.credits !== undefined ? dbUser.credits : INITIAL_CREDITS,
           });
-          // If credits were undefined in DB, write them back
           if (dbUser.credits === undefined) {
-            await update(userRef, { credits: INITIAL_CREDITS });
+             await update(userRef, { credits: INITIAL_CREDITS, updatedAt: serverTimestamp() });
+          } else {
+             await update(userRef, { updatedAt: serverTimestamp() }); // Update last active time
           }
         } else {
-          // New user (e.g. first Google sign-in)
           const displayName = firebaseUser.displayName || firebaseUser.email?.split('@')[0];
           const newUserProfile: AppUser = {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
             displayName: displayName,
-            school: '',
+            school: '', // For Google Sign-In, these might be empty initially
             alYear: '',
             mobileNumber: '',
             credits: INITIAL_CREDITS,
@@ -76,6 +76,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             email: firebaseUser.email,
             displayName: newUserProfile.displayName,
             createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
             school: newUserProfile.school,
             alYear: newUserProfile.alYear,
             mobileNumber: newUserProfile.mobileNumber,
@@ -106,9 +107,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         alYear: alYear,
         mobileNumber: mobileNumber,
         createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
         credits: userCredits,
       });
-       setUser({
+       setUser({ // Update local user state immediately
           uid: firebaseUser.uid,
           email: firebaseUser.email,
           displayName: displayName,
@@ -132,7 +134,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setAuthError(null);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, pass);
-      // User data (including credits) will be fetched by onAuthStateChanged
+      // User data will be fetched by onAuthStateChanged
       return userCredential.user;
     } catch (error: any) {
       console.error("Login error:", error);
@@ -143,7 +145,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const signInWithGoogle = async (): Promise<FirebaseUser | null> => {
+ const signInWithGoogle = async (): Promise<FirebaseUser | null> => {
     setLoading(true);
     setAuthError(null);
     const provider = new GoogleAuthProvider();
@@ -151,11 +153,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
       
+      // User data (including checking if new or existing for credit initialization)
+      // will be handled by the onAuthStateChanged listener.
+      // We just need to ensure the basic profile info is there if it's a truly new DB entry.
       const userRef = ref(db, `users/${firebaseUser.uid}`);
       const snapshot = await get(userRef);
       if (!snapshot.exists()) {
         const displayName = firebaseUser.displayName || firebaseUser.email?.split('@')[0];
-        const userCredits = INITIAL_CREDITS;
         await set(userRef, {
           email: firebaseUser.email,
           displayName: displayName,
@@ -163,24 +167,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           alYear: '', 
           mobileNumber: '',
           createdAt: serverTimestamp(),
-          credits: userCredits,
+          updatedAt: serverTimestamp(),
+          credits: INITIAL_CREDITS, // Ensure new Google sign-ups get initial credits
         });
-         setUser({ 
-          uid: firebaseUser.uid,
-          email: firebaseUser.email,
-          displayName: displayName,
-          school: '', 
-          alYear: '',
-          mobileNumber: '',
-          credits: userCredits,
-        });
+         // onAuthStateChanged will subsequently pick this up and set the user state.
+      } else {
+        // If user exists, just update their last active time
+        await update(userRef, { updatedAt: serverTimestamp() });
       }
-      // If snapshot exists, onAuthStateChanged will handle setting the user with existing data (including credits).
       return firebaseUser;
     } catch (error: any) {
       console.error("Google Sign-In error object:", error); 
       let specificMessage = `Failed to sign in with Google: ${error.message || 'An unknown error occurred.'}`;
-      // More specific error messages...
+      
       switch (error.code) {
         case 'auth/popup-closed-by-user':
            specificMessage = "Google Sign-In was cancelled or the popup was closed. This can happen if you closed it manually, due to browser issues (try disabling extensions or using an incognito window), or if there's a misconfiguration in your Google Cloud/Firebase project settings. Please meticulously review your Authorized JavaScript origins, Authorized redirect URIs in the Google Cloud Console, and ensure Google is enabled as a provider with correct web SDK configuration in Firebase Authentication settings.";
