@@ -12,8 +12,6 @@ import { fileToDataUri } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import type { Language, Subject, Message } from "@/types";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertTriangle } from "lucide-react";
-
 
 export function EduAiTutorClient() {
   const { user, loading: authLoading } = useAuth();
@@ -166,10 +164,6 @@ export function EduAiTutorClient() {
         onSubjectChange={setSelectedSubject}
       />
       <ChatMessagesList messages={messages} isLoading={isLoading} messagesEndRef={messagesEndRef} />
-      <div className="px-4 py-2 text-xs text-muted-foreground bg-card border-t border-border flex items-center justify-center gap-1">
-        <AlertTriangle className="h-3 w-3 text-orange-500" />
-        <span>EduCore AI can make mistakes. Check important info.</span>
-      </div>
       <ChatInputArea
         onSendMessage={handleSendMessage}
         onSummarizeFile={handleSummarizeFile}
