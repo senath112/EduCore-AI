@@ -59,7 +59,7 @@ Need help or want to onboard your class or institute?
 
 📧 Email: `support@yourplatform.com`  
 🌐 Website: [https://yourplatform.com](https://yourplatform.com)  
-📱 WhatsApp: +94 XXX XXX XXX (optional)
+📱 WhatsApp: +94 762259050
 
 ---
 
