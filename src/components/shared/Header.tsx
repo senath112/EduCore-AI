@@ -5,7 +5,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react'; 
-import { GraduationCap, Languages, BookOpen, LogOut, LogIn, UserPlus, CreditCard, ShoppingBag, UserCog } from "lucide-react";
+import { GraduationCap, Languages, BookOpen, LogOut, LogIn, UserPlus, CreditCard, ShoppingBag, UserCog, Edit3 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
@@ -49,7 +49,7 @@ export function AppHeader({
   useEffect(() => {
     if (user && profileCompletionStatus === 'incomplete') {
       setIsCompleteProfileDialogOpen(true);
-    } else {
+    } else if (profileCompletionStatus === 'complete') { // Close if profile becomes complete
       setIsCompleteProfileDialogOpen(false);
     }
   }, [user, profileCompletionStatus]);
@@ -64,7 +64,7 @@ export function AppHeader({
     return email.substring(0, 2).toUpperCase();
   }
 
-  const showAuthControls = !pathname.startsWith('/login') && !pathname.startsWith('/signup') && !pathname.startsWith('/forgot-password');
+  const showAuthControls = !pathname.startsWith('/login') && !pathname.startsWith('/signup') && !pathname.startsWith('/forgot-password') && !pathname.startsWith('/buy-credits');
 
 
   return (
@@ -152,6 +152,10 @@ export function AppHeader({
                       <span>Complete Profile</span>
                     </DropdownMenuItem>
                   )}
+                  <DropdownMenuItem onSelect={() => setIsCompleteProfileDialogOpen(true)} className="cursor-pointer">
+                    <Edit3 className="mr-2 h-4 w-4" />
+                    <span>Edit Profile</span>
+                  </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => setIsBuyCreditsDialogOpen(true)} className="cursor-pointer">
                     <ShoppingBag className="mr-2 h-4 w-4" />
                     <span>Buy Credits</span>
@@ -186,10 +190,9 @@ export function AppHeader({
       <Dialog open={isBuyCreditsDialogOpen} onOpenChange={setIsBuyCreditsDialogOpen}>
         <BuyCreditsDialog />
       </Dialog>
-      {user && ( // Only render CompleteProfileDialog if user exists
+      {user && ( 
         <Dialog open={isCompleteProfileDialogOpen} 
           onOpenChange={(open) => {
-            // Prevent closing via Escape or overlay click if profile is incomplete
             if (!open && profileCompletionStatus === 'incomplete') return; 
             setIsCompleteProfileDialogOpen(open);
           }}>
@@ -197,7 +200,6 @@ export function AppHeader({
             user={user} 
             onClose={() => {
               setIsCompleteProfileDialogOpen(false);
-              // AuthContext will set profileCompletionStatus to 'complete' upon successful update
             }}
           />
         </Dialog>

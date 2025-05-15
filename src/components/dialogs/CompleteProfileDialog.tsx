@@ -10,7 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { UserCog, AlertCircle } from "lucide-react";
@@ -26,12 +26,12 @@ const profileSchema = z.object({
 type ProfileFormData = z.infer<typeof profileSchema>;
 
 interface CompleteProfileDialogProps {
-  user: AppUser; // To prefill if needed, though usually for new Google users these are empty
+  user: AppUser; 
   onClose: () => void;
 }
 
 export function CompleteProfileDialog({ user, onClose }: CompleteProfileDialogProps) {
-  const { updateUserProfileDetails, loading: authLoading, authError, setAuthError } = useAuth();
+  const { updateUserProfileDetails, loading: authLoading, authError, setAuthError, profileCompletionStatus } = useAuth();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -45,7 +45,6 @@ export function CompleteProfileDialog({ user, onClose }: CompleteProfileDialogPr
   });
 
    useEffect(() => {
-    // Reset form if user details change (e.g., if dialog re-opens for some reason with different user)
     form.reset({
       school: user.school || "",
       alYear: user.alYear || "",
@@ -60,25 +59,31 @@ export function CompleteProfileDialog({ user, onClose }: CompleteProfileDialogPr
     if (success) {
       toast({
         title: "Profile Updated",
-        description: "Your additional details have been saved.",
+        description: "Your details have been successfully saved.",
       });
-      onClose(); // This will close the dialog
-    } else {
-      // authError will be set by the context, so we don't need to toast it here again
-      // but we can ensure the form remains for correction
+      onClose(); 
     }
     setIsSubmitting(false);
   };
+  
+  const dialogTitle = profileCompletionStatus === 'incomplete' ? "Complete Your Profile" : "Profile Details";
+  const dialogDescription = profileCompletionStatus === 'incomplete' 
+    ? "Please provide a few more details to complete your EduCore AI account setup."
+    : "Update your school, A/L year, or mobile number.";
 
   return (
-    <DialogContent className="sm:max-w-md p-6 rounded-lg shadow-xl" onInteractOutside={(e) => e.preventDefault()} onEscapeKeyDown={(e) => e.preventDefault()}>
+    <DialogContent 
+      className="sm:max-w-md p-6 rounded-lg shadow-xl" 
+      onInteractOutside={(e) => { if (profileCompletionStatus === 'incomplete') e.preventDefault(); }} 
+      onEscapeKeyDown={(e) => { if (profileCompletionStatus === 'incomplete') e.preventDefault(); }}
+    >
       <DialogHeader className="mb-4">
         <div className="flex items-center gap-3 mb-2 justify-center">
           <UserCog className="h-10 w-10 text-accent" />
-          <DialogTitle className="text-2xl font-bold text-center">Complete Your Profile</DialogTitle>
+          <DialogTitle className="text-2xl font-bold text-center">{dialogTitle}</DialogTitle>
         </div>
         <DialogDescription className="text-center text-muted-foreground">
-          Please provide a few more details to complete your EduCore AI account setup.
+          {dialogDescription}
         </DialogDescription>
       </DialogHeader>
       
@@ -134,15 +139,18 @@ export function CompleteProfileDialog({ user, onClose }: CompleteProfileDialogPr
             )}
           />
           
-          <DialogFooter className="sm:justify-center mt-6 pt-4 border-t">
-            <Button type="submit" disabled={isSubmitting || authLoading} className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground">
+          <DialogFooter className="sm:justify-between mt-6 pt-4 border-t">
+             <DialogClose asChild>
+                <Button type="button" variant="outline">
+                    Cancel
+                </Button>
+            </DialogClose>
+            <Button type="submit" disabled={isSubmitting || authLoading} className="bg-primary hover:bg-primary/90 text-primary-foreground">
               {isSubmitting || authLoading ? "Saving..." : "Save Details"}
             </Button>
-            {/* Optionally, add a "Skip" button if desired, which would call onClose and perhaps set a flag in user profile */}
           </DialogFooter>
         </form>
       </Form>
     </DialogContent>
   );
 }
-
