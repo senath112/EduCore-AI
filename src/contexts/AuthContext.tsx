@@ -12,6 +12,7 @@ import {
   onAuthStateChanged,
   GoogleAuthProvider,
   signInWithPopup,
+  sendPasswordResetEmail,
 } from "firebase/auth";
 import { ref, set, get, serverTimestamp } from "firebase/database";
 import type { AppUser } from "@/types";
@@ -25,6 +26,7 @@ interface AuthContextType {
   logIn: (email: string, pass: string) => Promise<FirebaseUser | null>;
   signInWithGoogle: () => Promise<FirebaseUser | null>;
   logOut: () => Promise<void>;
+  sendPasswordReset: (email: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -160,7 +162,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       switch (error.code) {
         case 'auth/popup-closed-by-user':
-          specificMessage = "Google Sign-In popup was closed. If you did not close it manually, and have already tried disabling browser extensions or using an incognito window, this strongly suggests a misconfiguration in your Firebase or Google Cloud project settings. Please meticulously review your Authorized JavaScript origins, Authorized redirect URIs in the Google Cloud Console, and ensure Google is enabled as a provider with correct web SDK configuration in Firebase Authentication settings.";
+          specificMessage = "Google Sign-In was cancelled or the popup was closed. This can happen if you closed it manually, due to browser issues (try disabling extensions or using an incognito window), or if there's a misconfiguration in your Google Cloud/Firebase project settings. Please meticulously review your Authorized JavaScript origins, Authorized redirect URIs in the Google Cloud Console, and ensure Google is enabled as a provider with correct web SDK configuration in Firebase Authentication settings.";
           break;
         case 'auth/popup-blocked':
           specificMessage = "Google Sign-In popup was blocked by your browser. Please allow popups for this site and try again.";
@@ -174,10 +176,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         case 'auth/unauthorized-domain':
           specificMessage = "This domain is not authorized for Google Sign-In. Please check your Firebase (Authentication -> Settings -> Authorized domains) and Google Cloud console (Credentials -> OAuth 2.0 Client ID -> Authorized JavaScript origins and Authorized redirect URIs) settings.";
           break;
-        // You can add more specific cases here if they become relevant
       }
       setAuthError(`${specificMessage} (Code: ${error.code || 'N/A'})`);
       return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const sendPasswordReset = async (email: string): Promise<boolean> => {
+    setLoading(true);
+    setAuthError(null);
+    try {
+      await sendPasswordResetEmail(auth, email);
+      return true;
+    } catch (error: any) {
+      console.error("Password reset error:", error);
+      setAuthError(error.message || "Failed to send password reset email.");
+      return false;
     } finally {
       setLoading(false);
     }
@@ -198,7 +214,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, authError, setAuthError, signUp, logIn, signInWithGoogle, logOut }}>
+    <AuthContext.Provider value={{ user, loading, authError, setAuthError, signUp, logIn, signInWithGoogle, logOut, sendPasswordReset }}>
       {children}
     </AuthContext.Provider>
   );
