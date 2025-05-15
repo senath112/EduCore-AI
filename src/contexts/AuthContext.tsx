@@ -44,23 +44,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setUser({
             uid: firebaseUser.uid,
             email: firebaseUser.email,
-            displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0], // Use Google's display name if available
+            displayName: firebaseUser.displayName || dbUser.displayName || firebaseUser.email?.split('@')[0], 
             school: dbUser.school,
             alYear: dbUser.alYear,
           });
         } else {
-           // User from Auth (e.g. Google Sign In first time) but not yet in DB
-           // Create a basic profile, school/alYear can be updated later
           const newUserProfile: AppUser = {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
             displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
-            school: '', // Initialize as empty
-            alYear: '', // Initialize as empty
+            school: '', 
+            alYear: '', 
           };
           await set(ref(db, `users/${firebaseUser.uid}`), {
             email: firebaseUser.email,
-            displayName: firebaseUser.displayName,
+            displayName: newUserProfile.displayName,
             createdAt: serverTimestamp(),
             school: newUserProfile.school,
             alYear: newUserProfile.alYear,
@@ -81,9 +79,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
       const firebaseUser = userCredential.user;
+      const displayName = firebaseUser.email?.split('@')[0];
       await set(ref(db, `users/${firebaseUser.uid}`), {
         email: firebaseUser.email,
-        displayName: firebaseUser.email?.split('@')[0], // Default display name from email
+        displayName: displayName,
         school: school,
         alYear: alYear,
         createdAt: serverTimestamp(),
@@ -91,7 +90,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
        setUser({
           uid: firebaseUser.uid,
           email: firebaseUser.email,
-          displayName: firebaseUser.email?.split('@')[0],
+          displayName: displayName,
           school: school,
           alYear: alYear,
         });
@@ -128,35 +127,40 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const result = await signInWithPopup(auth, provider);
       const firebaseUser = result.user;
       
-      // Check if user exists in DB, if not, create an entry
       const userRef = ref(db, `users/${firebaseUser.uid}`);
       const snapshot = await get(userRef);
       if (!snapshot.exists()) {
+        const displayName = firebaseUser.displayName || firebaseUser.email?.split('@')[0];
         await set(userRef, {
           email: firebaseUser.email,
-          displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
-          school: '', // Google Sign-In doesn't provide this
-          alYear: '', // Google Sign-In doesn't provide this
+          displayName: displayName,
+          school: '', 
+          alYear: '', 
           createdAt: serverTimestamp(),
         });
-         setUser({ // Update context immediately
+         setUser({ 
           uid: firebaseUser.uid,
           email: firebaseUser.email,
-          displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
+          displayName: displayName,
           school: '',
           alYear: '',
         });
-      } else {
-        // User exists, onAuthStateChanged will update the context with DB data
       }
       return firebaseUser;
     } catch (error: any) {
       console.error("Google sign-in error:", error);
-      // Handle common errors like popup closed by user
       if (error.code === 'auth/popup-closed-by-user') {
-        setAuthError("Google Sign-In was cancelled.");
+        setAuthError("Google Sign-In was cancelled or the popup was closed before completion.");
+      } else if (error.code === 'auth/popup-blocked') {
+        setAuthError("Google Sign-In popup was blocked by your browser. Please allow popups for this site and try again.");
+      } else if (error.code === 'auth/cancelled-popup-request') {
+        setAuthError("Multiple Google Sign-In popups were opened, or a new popup was opened before the previous one completed. Please try again.");
+      } else if (error.code === 'auth/operation-not-allowed') {
+         setAuthError("Google Sign-In is not enabled for this project. Please check your Firebase console settings (Authentication -> Sign-in method).");
+      } else if (error.code === 'auth/unauthorized-domain') {
+         setAuthError("This domain is not authorized for Google Sign-In. Please check your Firebase and Google Cloud console 'Authorized domains' and 'Authorized JavaScript origins' settings.");
       } else {
-        setAuthError(error.message || "Failed to sign in with Google.");
+        setAuthError(`Failed to sign in with Google: ${error.message || 'An unknown error occurred.'} (Code: ${error.code || 'N/A'})`);
       }
       return null;
     } finally {
