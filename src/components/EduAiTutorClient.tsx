@@ -1,3 +1,4 @@
+
 // src/components/EduAiTutorClient.tsx
 "use client";
 
@@ -7,14 +8,17 @@ import { useAuth } from "@/contexts/AuthContext";
 import { AppHeader } from "@/components/shared/Header";
 import { ChatMessagesList } from "@/components/chat/ChatMessagesList";
 import { ChatInputArea } from "@/components/chat/ChatInputArea";
-import { handleTutorQueryAction, handleSummarizeFileAction } from "@/lib/actions";
+import { handleTutorQueryAction, handleSummarizeFileAction, deductUserCreditsAction } from "@/lib/actions";
 import { fileToDataUri } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import type { Language, Subject, Message } from "@/types";
 import { Skeleton } from "@/components/ui/skeleton";
 
+const AI_INTERACTION_COST = 1;
+
 export function EduAiTutorClient() {
-  const { user, loading: authLoading } = useAuth();
+  const authContext = useAuth(); // Renamed to avoid conflict with user in destructuring
+  const { user, loading: authLoading, updateLocalUserCredits } = authContext;
   const router = useRouter();
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -31,7 +35,7 @@ export function EduAiTutorClient() {
   }, [user, authLoading, router]);
 
   useEffect(() => {
-    if (user) { // Only set initial messages if user is logged in
+    if (user) { 
       setMessages([
         {
           id: "initial-greeting-1",
@@ -42,7 +46,7 @@ export function EduAiTutorClient() {
         {
           id: "initial-greeting-2",
           role: "system",
-          content: `Welcome to EduCore AI! I'm here to help you with ${selectedSubject} in ${selectedLanguage}. Ask me anything!`,
+          content: `Welcome to EduCore AI! I'm here to help you with ${selectedSubject} in ${selectedLanguage}. Ask me anything! (Each interaction costs ${AI_INTERACTION_COST} credit).`,
           timestamp: new Date(Date.now() + 1),
         },
       ]);
@@ -68,6 +72,11 @@ export function EduAiTutorClient() {
       return;
     }
     if (messageText.trim() === "" && !file) return;
+
+    if (user.credits === undefined || user.credits < AI_INTERACTION_COST) {
+      toast({ title: "Insufficient Credits", description: `You need at least ${AI_INTERACTION_COST} credit(s) for this action. You have ${user.credits !== undefined ? user.credits : 0}.`, variant: "destructive" });
+      return;
+    }
 
     setIsLoading(true);
     const userMessageContent = messageText.trim() || (file ? `Question about the attached file: ${file.name}` : "File attached.");
@@ -97,6 +106,13 @@ export function EduAiTutorClient() {
       toast({ title: "AI Tutor Error", description: response.error, variant: "destructive" });
     } else {
       addMessage("assistant", response);
+      const deductionResult = await deductUserCreditsAction(user.uid, AI_INTERACTION_COST);
+      if (deductionResult.success && deductionResult.newCredits !== undefined) {
+        updateLocalUserCredits(deductionResult.newCredits);
+        toast({ title: "Credits Updated", description: `${AI_INTERACTION_COST} credit(s) deducted. New balance: ${deductionResult.newCredits}.`, variant: "default" });
+      } else {
+        toast({ title: "Credit Deduction Failed", description: deductionResult.error || "Could not update credits automatically. Please check your balance.", variant: "destructive" });
+      }
     }
     setIsLoading(false);
   };
@@ -107,6 +123,12 @@ export function EduAiTutorClient() {
       router.push("/login");
       return;
     }
+
+    if (user.credits === undefined || user.credits < AI_INTERACTION_COST) {
+      toast({ title: "Insufficient Credits", description: `You need at least ${AI_INTERACTION_COST} credit(s) for this action. You have ${user.credits !== undefined ? user.credits : 0}.`, variant: "destructive" });
+      return;
+    }
+
     setIsLoading(true);
     addMessage("user", `Please summarize this file: ${file.name}`, {name: file.name});
 
@@ -131,6 +153,13 @@ export function EduAiTutorClient() {
       toast({ title: "Summarization Error", description: response.error, variant: "destructive" });
     } else {
       addMessage("assistant", response);
+      const deductionResult = await deductUserCreditsAction(user.uid, AI_INTERACTION_COST);
+      if (deductionResult.success && deductionResult.newCredits !== undefined) {
+        updateLocalUserCredits(deductionResult.newCredits);
+        toast({ title: "Credits Updated", description: `${AI_INTERACTION_COST} credit(s) deducted. New balance: ${deductionResult.newCredits}.`, variant: "default" });
+      } else {
+        toast({ title: "Credit Deduction Failed", description: deductionResult.error || "Could not update credits automatically. Please check your balance.", variant: "destructive" });
+      }
     }
     setIsLoading(false);
   };
@@ -147,7 +176,6 @@ export function EduAiTutorClient() {
   }
 
   if (!user) {
-    // This should ideally not be reached if redirect in useEffect works, but as a fallback:
     return (
        <div className="flex flex-col h-screen items-center justify-center bg-background p-8">
         <p className="text-muted-foreground">Redirecting to login...</p>

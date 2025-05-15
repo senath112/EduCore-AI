@@ -1,9 +1,10 @@
+
 // src/components/shared/Header.tsx
 "use client";
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { GraduationCap, Languages, BookOpen, LogOut, LogIn, UserPlus } from "lucide-react";
+import { GraduationCap, Languages, BookOpen, LogOut, LogIn, UserPlus, CreditCard } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
@@ -104,7 +105,6 @@ export function AppHeader({
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                   <Avatar className="h-10 w-10">
-                    {/* Placeholder for user image if available */}
                     {/* <AvatarImage src={user.photoURL || undefined} alt={user.displayName || user.email || "User"} /> */}
                     <AvatarFallback className="bg-primary text-primary-foreground">
                       {getInitials(user.email)}
@@ -122,6 +122,12 @@ export function AppHeader({
                      {user.school && <p className="text-xs leading-none text-muted-foreground">School: {user.school}</p>}
                     {user.alYear && <p className="text-xs leading-none text-muted-foreground">A/L Year: {user.alYear}</p>}
                     {user.mobileNumber && <p className="text-xs leading-none text-muted-foreground">Mobile: {user.mobileNumber}</p>}
+                     {user.credits !== undefined && (
+                      <div className="flex items-center text-xs leading-none text-muted-foreground mt-1">
+                        <CreditCard className="mr-1.5 h-3.5 w-3.5" />
+                        Credits: {user.credits}
+                      </div>
+                    )}
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />

@@ -1,3 +1,4 @@
+
 import type { User as FirebaseUser } from "firebase/auth";
 
 export type Language = "English" | "Sinhala";
@@ -29,8 +30,9 @@ export interface Message {
 export interface AppUser {
   uid: string;
   email: string | null;
-  displayName?: string | null; // Or combine with email for display
+  displayName?: string | null;
   school?: string;
   alYear?: string;
-  mobileNumber?: string; // Added mobile number
+  mobileNumber?: string;
+  credits?: number; // Added credits field
 }
