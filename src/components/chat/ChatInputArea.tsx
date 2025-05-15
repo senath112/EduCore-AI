@@ -5,7 +5,7 @@ import type { ChangeEvent, FormEvent } from "react";
 import { useState, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Paperclip, Send, FileText, XCircle, ArrowUpCircle, AlertTriangle } from "lucide-react";
+import { Paperclip, Send, FileText, XCircle, ArrowUpCircle } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 
 interface ChatInputAreaProps {
@@ -138,7 +138,6 @@ export function ChatInputArea({ onSendMessage, onSummarizeFile, isLoading }: Cha
         )}
       </form>
       <div className="mt-2 px-1 text-xs text-muted-foreground flex items-center justify-center text-center gap-1">
-        <AlertTriangle className="h-3 w-3 text-orange-500 flex-shrink-0" />
         <span>EduCore AI can make mistakes. Check important info.</span>
       </div>
     </div>
