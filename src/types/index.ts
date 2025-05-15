@@ -32,4 +32,5 @@ export interface AppUser {
   displayName?: string | null; // Or combine with email for display
   school?: string;
   alYear?: string;
+  mobileNumber?: string; // Added mobile number
 }

@@ -18,6 +18,7 @@ export default function SignupPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [school, setSchool] = useState("");
   const [alYear, setAlYear] = useState("");
+  const [mobileNumber, setMobileNumber] = useState(""); // Added mobile number state
   const { signUp, authError, setAuthError, loading, user } = useAuth();
   const router = useRouter();
 
@@ -37,7 +38,17 @@ export default function SignupPage() {
       setAuthError("A/L Year must be a 4-digit year (e.g., 2025).");
       return;
     }
-    const signedUpUser = await signUp(email, password, school, alYear);
+    // Basic validation for mobile number (e.g., not empty, you can add more specific regex)
+    if (!mobileNumber.trim()) {
+        setAuthError("Mobile number is required.");
+        return;
+    }
+    if (!/^\+?[0-9\s-()]{7,15}$/.test(mobileNumber)) {
+      setAuthError("Please enter a valid mobile number (7-15 digits, can include +, -, (), spaces).");
+      return;
+    }
+
+    const signedUpUser = await signUp(email, password, school, alYear, mobileNumber.trim());
     if (signedUpUser) {
       router.push("/");
     }
@@ -122,6 +133,18 @@ export default function SignupPage() {
                 required
                 pattern="\d{4}"
                 title="Please enter a 4-digit year"
+                className="bg-muted/30"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="mobileNumber">Mobile Number</Label>
+              <Input
+                id="mobileNumber"
+                type="tel" 
+                placeholder="e.g., +947XXXXXXXX"
+                value={mobileNumber}
+                onChange={(e) => setMobileNumber(e.target.value)}
+                required
                 className="bg-muted/30"
               />
             </div>

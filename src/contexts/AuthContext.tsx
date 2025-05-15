@@ -22,7 +22,7 @@ interface AuthContextType {
   loading: boolean;
   authError: string | null;
   setAuthError: Dispatch<SetStateAction<string | null>>;
-  signUp: (email: string, pass: string, school: string, alYear: string) => Promise<FirebaseUser | null>;
+  signUp: (email: string, pass: string, school: string, alYear: string, mobileNumber: string) => Promise<FirebaseUser | null>;
   logIn: (email: string, pass: string) => Promise<FirebaseUser | null>;
   signInWithGoogle: () => Promise<FirebaseUser | null>;
   logOut: () => Promise<void>;
@@ -49,17 +49,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             displayName: firebaseUser.displayName || dbUser.displayName || firebaseUser.email?.split('@')[0], 
             school: dbUser.school,
             alYear: dbUser.alYear,
+            mobileNumber: dbUser.mobileNumber, // Fetch mobile number
           });
         } else {
-          // This case handles users who signed up with Google but might not have school/alYear yet
+          // This case handles users who signed up with Google but might not have school/alYear/mobile yet
           // or users whose DB entry was somehow missed.
           const displayName = firebaseUser.displayName || firebaseUser.email?.split('@')[0];
           const newUserProfile: AppUser = {
             uid: firebaseUser.uid,
             email: firebaseUser.email,
             displayName: displayName,
-            school: '', // Default to empty if not found
-            alYear: '', // Default to empty if not found
+            school: '', 
+            alYear: '', 
+            mobileNumber: '', // Default mobile number
           };
           await set(ref(db, `users/${firebaseUser.uid}`), {
             email: firebaseUser.email,
@@ -67,6 +69,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             createdAt: serverTimestamp(),
             school: newUserProfile.school,
             alYear: newUserProfile.alYear,
+            mobileNumber: newUserProfile.mobileNumber,
           });
           setUser(newUserProfile);
         }
@@ -78,7 +81,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => unsubscribe();
   }, []);
 
-  const signUp = async (email: string, pass: string, school: string, alYear: string): Promise<FirebaseUser | null> => {
+  const signUp = async (email: string, pass: string, school: string, alYear: string, mobileNumber: string): Promise<FirebaseUser | null> => {
     setLoading(true);
     setAuthError(null);
     try {
@@ -90,6 +93,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         displayName: displayName,
         school: school,
         alYear: alYear,
+        mobileNumber: mobileNumber, // Save mobile number
         createdAt: serverTimestamp(),
       });
        setUser({
@@ -98,6 +102,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           displayName: displayName,
           school: school,
           alYear: alYear,
+          mobileNumber: mobileNumber, // Set mobile number in local state
         });
       return firebaseUser;
     } catch (error: any) {
@@ -137,32 +142,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const snapshot = await get(userRef);
       if (!snapshot.exists()) {
         const displayName = firebaseUser.displayName || firebaseUser.email?.split('@')[0];
-        // For Google Sign-In, school and alYear are not collected upfront
-        // So we initialize them as empty strings.
         await set(userRef, {
           email: firebaseUser.email,
           displayName: displayName,
           school: '', 
           alYear: '', 
+          mobileNumber: '', // Initialize mobile for Google sign-in users
           createdAt: serverTimestamp(),
         });
          setUser({ 
           uid: firebaseUser.uid,
           email: firebaseUser.email,
           displayName: displayName,
-          school: '', // Ensure these are set for the local state too
+          school: '', 
           alYear: '',
+          mobileNumber: '', // Set in local state too
         });
       }
       // If snapshot exists, onAuthStateChanged will handle setting the user with existing data.
       return firebaseUser;
     } catch (error: any) {
-      console.error("Google Sign-In error object:", error); // Log the full error object
+      console.error("Google Sign-In error object:", error); 
       let specificMessage = `Failed to sign in with Google: ${error.message || 'An unknown error occurred.'}`;
 
       switch (error.code) {
         case 'auth/popup-closed-by-user':
-          specificMessage = "Google Sign-In was cancelled or the popup was closed. This can happen if you closed it manually, due to browser issues (try disabling extensions or using an incognito window), or if there's a misconfiguration in your Google Cloud/Firebase project settings. Please meticulously review your Authorized JavaScript origins, Authorized redirect URIs in the Google Cloud Console, and ensure Google is enabled as a provider with correct web SDK configuration in Firebase Authentication settings.";
+           specificMessage = "Google Sign-In was cancelled or the popup was closed. This can happen if you closed it manually, due to browser issues (try disabling extensions or using an incognito window), or if there's a misconfiguration in your Google Cloud/Firebase project settings. Please meticulously review your Authorized JavaScript origins, Authorized redirect URIs in the Google Cloud Console, and ensure Google is enabled as a provider with correct web SDK configuration in Firebase Authentication settings.";
           break;
         case 'auth/popup-blocked':
           specificMessage = "Google Sign-In popup was blocked by your browser. Please allow popups for this site and try again.";

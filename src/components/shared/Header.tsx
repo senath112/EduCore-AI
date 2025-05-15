@@ -49,7 +49,7 @@ export function AppHeader({
     return email.substring(0, 2).toUpperCase();
   }
 
-  const showAuthControls = !pathname.startsWith('/login') && !pathname.startsWith('/signup');
+  const showAuthControls = !pathname.startsWith('/login') && !pathname.startsWith('/signup') && !pathname.startsWith('/forgot-password');
 
 
   return (
@@ -121,6 +121,7 @@ export function AppHeader({
                     </p>
                      {user.school && <p className="text-xs leading-none text-muted-foreground">School: {user.school}</p>}
                     {user.alYear && <p className="text-xs leading-none text-muted-foreground">A/L Year: {user.alYear}</p>}
+                    {user.mobileNumber && <p className="text-xs leading-none text-muted-foreground">Mobile: {user.mobileNumber}</p>}
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
