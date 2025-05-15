@@ -10,9 +10,10 @@ import type { Message } from "@/types";
 interface ChatMessagesListProps {
   messages: Message[];
   isLoading: boolean;
+  messagesEndRef: RefObject<HTMLDivElement>;
 }
 
-export function ChatMessagesList({ messages, isLoading }: ChatMessagesListProps) {
+export function ChatMessagesList({ messages, isLoading, messagesEndRef }: ChatMessagesListProps) {
   const scrollAreaRef: RefObject<HTMLDivElement> = useRef<HTMLDivElement>(null);
   const viewportRef: RefObject<HTMLDivElement> = useRef<HTMLDivElement>(null);
 
@@ -24,15 +25,16 @@ export function ChatMessagesList({ messages, isLoading }: ChatMessagesListProps)
   }, [messages]);
 
   return (
-    <ScrollArea className="flex-grow p-4 md:p-6" ref={scrollAreaRef}>
-      <div ref={viewportRef} className="h-full">
+    <ScrollArea className="flex-grow p-4 md:p-6 bg-background" ref={scrollAreaRef}>
+      <div ref={viewportRef} className="h-full space-y-1">
         {messages.map((msg) => (
           <ChatMessage key={msg.id} message={msg} />
         ))}
+        <div ref={messagesEndRef} /> 
         {isLoading && (
-          <div className="flex justify-center items-center p-4">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
-            <p className="ml-2 text-muted-foreground">EduAI is thinking...</p>
+          <div className="flex justify-start items-center p-4 pl-12"> {/* Aligns with bot messages */}
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent"></div>
+            <p className="ml-3 text-muted-foreground">EduCore AI is thinking...</p>
           </div>
         )}
       </div>

@@ -1,7 +1,7 @@
 // src/components/EduAiTutorClient.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AppHeader } from "@/components/shared/Header";
 import { ChatMessagesList } from "@/components/chat/ChatMessagesList";
 import { ChatInputArea } from "@/components/chat/ChatInputArea";
@@ -16,8 +16,8 @@ export function EduAiTutorClient() {
   const [selectedSubject, setSelectedSubject] = useState<Subject>("Biology");
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Effect to add initial greeting messages
   useEffect(() => {
     setMessages([
       {
@@ -29,11 +29,15 @@ export function EduAiTutorClient() {
       {
         id: "initial-greeting-2",
         role: "system",
-        content: `Welcome to EduAI Tutor! I'm here to help you with ${selectedSubject} in ${selectedLanguage}. Ask me anything!`,
-        timestamp: new Date(Date.now() + 1), // Ensure slightly different timestamp for ordering
+        content: `Welcome to EduCore AI! I'm here to help you with ${selectedSubject} in ${selectedLanguage}. Ask me anything!`,
+        timestamp: new Date(Date.now() + 1),
       },
     ]);
-  }, [selectedSubject, selectedLanguage]); 
+  }, [selectedSubject, selectedLanguage]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
 
   const addMessage = (role: "user" | "assistant" | "system", content: Message["content"], file?: { name: string, dataUri?: string }) => {
@@ -44,11 +48,10 @@ export function EduAiTutorClient() {
   };
 
   const handleSendMessage = async (messageText: string, file?: File) => {
-    if (messageText === "" && !file) return;
+    if (messageText.trim() === "" && !file) return;
 
     setIsLoading(true);
-    const userMessageContent = messageText || (file ? `Question about the attached file: ${file.name}` : "File attached.");
-    // Do not pass dataUri to addMessage for user message, it's only needed for the backend
+    const userMessageContent = messageText.trim() || (file ? `Question about the attached file: ${file.name}` : "File attached.");
     addMessage("user", userMessageContent, file ? {name: file.name} : undefined);
 
     let fileDataUri: string | undefined;
@@ -64,7 +67,7 @@ export function EduAiTutorClient() {
     }
 
     const response = await handleTutorQueryAction({
-      question: messageText,
+      question: messageText.trim(), // Ensure messageText is trimmed for the action as well
       language: selectedLanguage,
       subject: selectedSubject,
       fileDataUri,
@@ -116,7 +119,7 @@ export function EduAiTutorClient() {
         selectedSubject={selectedSubject}
         onSubjectChange={setSelectedSubject}
       />
-      <ChatMessagesList messages={messages} isLoading={isLoading} />
+      <ChatMessagesList messages={messages} isLoading={isLoading} messagesEndRef={messagesEndRef} />
       <ChatInputArea
         onSendMessage={handleSendMessage}
         onSummarizeFile={handleSummarizeFile}
@@ -125,4 +128,3 @@ export function EduAiTutorClient() {
     </div>
   );
 }
-

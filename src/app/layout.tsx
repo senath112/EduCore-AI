@@ -5,7 +5,7 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 
 export const metadata: Metadata = {
-  title: 'EduAI Tutor',
+  title: 'EduCore AI',
   description: 'AI Tutor for GCE Advanced Level Students',
 };
 

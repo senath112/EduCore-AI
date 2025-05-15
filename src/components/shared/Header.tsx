@@ -23,11 +23,11 @@ export function AppHeader({
   onSubjectChange,
 }: HeaderProps) {
   return (
-    <header className="bg-card text-card-foreground p-4 shadow-md">
+    <header className="bg-card text-card-foreground p-4 shadow-md sticky top-0 z-50">
       <div className="container mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <GraduationCap className="h-10 w-10 text-accent" />
-          <h1 className="text-3xl font-bold tracking-tight">EduAI Tutor</h1>
+          <h1 className="text-3xl font-bold tracking-tight">EduCore AI</h1>
         </div>
         <div className="flex flex-col sm:flex-row items-center gap-4">
           <div className="flex items-center gap-2">
