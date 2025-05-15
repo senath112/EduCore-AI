@@ -17,14 +17,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 const AI_INTERACTION_COST = 1;
 
 export function EduAiTutorClient() {
-  const authContext = useAuth(); // Renamed to avoid conflict with user in destructuring
+  const authContext = useAuth();
   const { user, loading: authLoading, updateLocalUserCredits } = authContext;
   const router = useRouter();
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedLanguage, setSelectedLanguage] = useState<Language>("English");
   const [selectedSubject, setSelectedSubject] = useState<Subject>("Biology");
-  const [isLoading, setIsLoading] = useState(false); // For chat operations
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasSetInitialMessages, setHasSetInitialMessages] = useState(false); // Flag to track initial message setup
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -34,8 +35,9 @@ export function EduAiTutorClient() {
     }
   }, [user, authLoading, router]);
 
+  // Effect to set initial messages or reset on logout
   useEffect(() => {
-    if (user) { 
+    if (user && !hasSetInitialMessages) {
       setMessages([
         {
           id: "initial-greeting-1",
@@ -50,8 +52,41 @@ export function EduAiTutorClient() {
           timestamp: new Date(Date.now() + 1),
         },
       ]);
+      setHasSetInitialMessages(true);
+    } else if (!user) {
+      // User logged out
+      setMessages([]);
+      setHasSetInitialMessages(false);
     }
-  }, [user, selectedSubject, selectedLanguage]);
+  }, [user, selectedSubject, selectedLanguage, hasSetInitialMessages]);
+
+
+  // Effect to update the content of the second welcome message if subject or language changes
+  // after initial messages have been set.
+  useEffect(() => {
+    if (user && hasSetInitialMessages && messages.length > 0) {
+        setMessages(prevMessages => {
+            const welcomeMessageIndex = prevMessages.findIndex(msg => msg.id === "initial-greeting-2");
+            if (welcomeMessageIndex !== -1) {
+                const updatedMessages = [...prevMessages];
+                const currentWelcomeMessage = updatedMessages[welcomeMessageIndex];
+                const newWelcomeContent = `Welcome to EduCore AI! I'm here to help you with ${selectedSubject} in ${selectedLanguage}. Ask me anything! (Each interaction costs ${AI_INTERACTION_COST} credit).`;
+
+                // Only update if content actually changes to avoid unnecessary re-renders/scrolls
+                if (currentWelcomeMessage.content !== newWelcomeContent) {
+                    updatedMessages[welcomeMessageIndex] = {
+                        ...currentWelcomeMessage,
+                        content: newWelcomeContent,
+                        timestamp: new Date(Date.now() + 1) // Update timestamp to reflect change
+                    };
+                    return updatedMessages;
+                }
+            }
+            return prevMessages;
+        });
+    }
+  }, [user, selectedSubject, selectedLanguage, hasSetInitialMessages, messages.length]);
+
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -200,3 +235,4 @@ export function EduAiTutorClient() {
     </div>
   );
 }
+
