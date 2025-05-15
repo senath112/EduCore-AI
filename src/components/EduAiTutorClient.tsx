@@ -48,7 +48,7 @@ export function EduAiTutorClient() {
         {
           id: "initial-greeting-2",
           role: "system",
-          content: `Welcome to EduCore AI! I'm here to help you with ${selectedSubject} in ${selectedLanguage}. Ask me anything! (Each interaction costs ${AI_INTERACTION_COST} credit).`,
+          content: `Welcome to EduCore AI! I'm here to help you with ${selectedSubject} in ${selectedLanguage}. Ask me anything!`,
           timestamp: new Date(Date.now() + 1),
         },
       ]);
@@ -70,7 +70,7 @@ export function EduAiTutorClient() {
             if (welcomeMessageIndex !== -1) {
                 const updatedMessages = [...prevMessages];
                 const currentWelcomeMessage = updatedMessages[welcomeMessageIndex];
-                const newWelcomeContent = `Welcome to EduCore AI! I'm here to help you with ${selectedSubject} in ${selectedLanguage}. Ask me anything! (Each interaction costs ${AI_INTERACTION_COST} credit).`;
+                const newWelcomeContent = `Welcome to EduCore AI! I'm here to help you with ${selectedSubject} in ${selectedLanguage}. Ask me anything!`;
 
                 // Only update if content actually changes to avoid unnecessary re-renders/scrolls
                 if (currentWelcomeMessage.content !== newWelcomeContent) {
@@ -144,7 +144,7 @@ export function EduAiTutorClient() {
       const deductionResult = await deductUserCreditsAction(user.uid, AI_INTERACTION_COST);
       if (deductionResult.success && deductionResult.newCredits !== undefined) {
         updateLocalUserCredits(deductionResult.newCredits);
-        toast({ title: "Interaction Complete", description: "Credits have been updated.", variant: "default" });
+        toast({ title: "Interaction Complete", description: "Credits updated.", variant: "default" });
       } else {
         toast({ title: "Credit Deduction Failed", description: deductionResult.error || "Could not update credits automatically. Please check your balance.", variant: "destructive" });
       }
@@ -191,7 +191,7 @@ export function EduAiTutorClient() {
       const deductionResult = await deductUserCreditsAction(user.uid, AI_INTERACTION_COST);
       if (deductionResult.success && deductionResult.newCredits !== undefined) {
         updateLocalUserCredits(deductionResult.newCredits);
-        toast({ title: "Summarization Complete", description: "Credits have been updated.", variant: "default" });
+        toast({ title: "Summarization Complete", description: "Credits updated.", variant: "default" });
       } else {
         toast({ title: "Credit Deduction Failed", description: deductionResult.error || "Could not update credits automatically. Please check your balance.", variant: "destructive" });
       }
