@@ -1,3 +1,4 @@
+
 import type { ReactNode } from 'react';
 import Header from './header';
 
@@ -9,7 +10,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
   return (
     <div className="flex flex-col min-h-screen">
       <Header />
-      <main className="flex-grow container mx-auto px-4 py-8">
+      <main className="flex flex-col flex-grow">
         {children}
       </main>
       <footer className="py-4 text-center text-sm text-muted-foreground">

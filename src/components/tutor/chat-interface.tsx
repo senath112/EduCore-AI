@@ -89,14 +89,14 @@ export default function ChatInterface() {
   };
 
   return (
-    <Card className="w-full shadow-xl">
+    <Card className="w-full shadow-xl flex flex-col flex-grow">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Bot /> AI Learning Assistant ({subject} - {language})
         </CardTitle>
       </CardHeader>
-      <CardContent className="p-0">
-        <ScrollArea className="h-[400px] w-full p-4 border-t border-b" ref={scrollAreaRef}>
+      <CardContent className="p-0 flex-grow flex flex-col">
+        <ScrollArea className="flex-grow w-full p-4 border-t border-b" ref={scrollAreaRef}>
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
               <MessageCircle size={48} className="mb-2" />
