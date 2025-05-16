@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useRef, useEffect } from 'react';
@@ -76,7 +77,6 @@ export default function ChatInterface() {
         title: "Error",
         description: "Failed to get response from AI Tutor. Please try again.",
       });
-      // Optionally add the error message back to chat or allow retry
       const errorResponse: Message = {
         id: Date.now().toString() + '_error',
         role: 'tutor',

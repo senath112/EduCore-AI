@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -10,10 +11,13 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
+import type { Language, Subject } from '@/lib/constants';
+import { LANGUAGES, SUBJECTS } from '@/lib/constants';
+
 
 const AiTutorInputSchema = z.object({
-  subject: z.enum(['Biology', 'Combined Maths', 'Physics', 'Chemistry']).describe('The subject for the tutoring session.'),
-  language: z.enum(['Sinhala', 'English']).describe('The preferred language for the tutoring session.'),
+  subject: z.enum(SUBJECTS.map(s => s.value) as [Subject, ...Subject[]]).describe('The subject for the tutoring session.'),
+  language: z.enum(LANGUAGES.map(l => l.value) as [Language, ...Language[]]).describe('The preferred language for the tutoring session.'),
   studentMessage: z.string().describe('The student message to respond to.'),
   chatHistory: z.array(
     z.object({
@@ -39,9 +43,9 @@ const prompt = ai.definePrompt({
   output: {schema: AiTutorOutputSchema},
   prompt: `You are an AI tutor and concept explainer specializing in {{{subject}}}. You are assisting a student in {{{language}}}.
 
-Your primary role is to tutor the student. However, if the student's message is a clear request to explain a specific topic or concept (e.g., "Explain Newton's First Law", "What is photosynthesis?", "Tell me about mitosis"), provide a comprehensive explanation of that concept.
+Your primary role is to tutor the student. However, if the student's message is a clear request to explain a specific topic or concept (e.g., "Explain Newton's First Law", "What is photosynthesis?", "Tell me about mitosis"), provide a comprehensive explanation of that concept in {{{language}}}.
 
-For general tutoring questions or ongoing conversation, adapt your responses based on the student's understanding and the chat history.
+For general tutoring questions or ongoing conversation, adapt your responses based on the student's understanding and the chat history, always responding in {{{language}}}.
 
 Chat History:
 {{#each chatHistory}}
