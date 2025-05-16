@@ -92,7 +92,7 @@ export default function ChatInterface() {
     <Card className="w-full shadow-xl">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Bot /> AI Tutor ({subject} - {language})
+          <Bot /> AI Learning Assistant ({subject} - {language})
         </CardTitle>
       </CardHeader>
       <CardContent className="p-0">
@@ -100,7 +100,7 @@ export default function ChatInterface() {
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
               <MessageCircle size={48} className="mb-2" />
-              <p>Ask me anything about {subject} in {language}!</p>
+              <p>Ask me anything about {subject} in {language}, or request an explanation for a specific concept!</p>
             </div>
           )}
           {messages.map((msg) => (
@@ -153,7 +153,7 @@ export default function ChatInterface() {
         >
           <Input
             type="text"
-            placeholder={`Ask about ${subject}...`}
+            placeholder={`Ask about ${subject} or explain a concept...`}
             value={currentMessage}
             onChange={(e) => setCurrentMessage(e.target.value)}
             className="flex-grow"

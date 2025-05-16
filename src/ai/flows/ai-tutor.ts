@@ -1,9 +1,9 @@
 'use server';
 
 /**
- * @fileOverview AI-powered chat interface for tutoring sessions.
+ * @fileOverview AI-powered chat interface for tutoring sessions and concept explanations.
  *
- * - aiTutor - A function that handles the tutoring process.
+ * - aiTutor - A function that handles the tutoring and explanation process.
  * - AiTutorInput - The input type for the aiTutor function.
  * - AiTutorOutput - The return type for the aiTutor function.
  */
@@ -37,22 +37,24 @@ const prompt = ai.definePrompt({
   name: 'aiTutorPrompt',
   input: {schema: AiTutorInputSchema},
   output: {schema: AiTutorOutputSchema},
-  prompt: `You are an AI tutor specializing in {{{subject}}}. You are tutoring a student in {{{language}}}.
+  prompt: `You are an AI tutor and concept explainer specializing in {{{subject}}}. You are assisting a student in {{{language}}}.
 
-  Adapt your explanations based on the student's understanding and questions. Consider the chat history to understand the student's current understanding.
+Your primary role is to tutor the student. However, if the student's message is a clear request to explain a specific topic or concept (e.g., "Explain Newton's First Law", "What is photosynthesis?", "Tell me about mitosis"), provide a comprehensive explanation of that concept.
 
-  Chat History:
-  {{#each chatHistory}}
-  {{#ifEquals role 'student'}}
-  Student: {{{content}}}
-  {{/ifEquals}}
-  {{#ifEquals role 'tutor'}}
-  Tutor: {{{content}}}
-  {{/ifEquals}}
-  {{/each}}
+For general tutoring questions or ongoing conversation, adapt your responses based on the student's understanding and the chat history.
 
-  Student: {{{studentMessage}}}
-  Tutor:`, // Keep the tutor prompt open ended
+Chat History:
+{{#each chatHistory}}
+{{#ifEquals role 'student'}}
+Student: {{{content}}}
+{{/ifEquals}}
+{{#ifEquals role 'tutor'}}
+Tutor: {{{content}}}
+{{/ifEquals}}
+{{/each}}
+
+Student: {{{studentMessage}}}
+Tutor:`, // Keep the tutor prompt open ended
   templateHelpers: {
     ifEquals: function (arg1: any, arg2: any, options: any) {
       // @ts-ignore
