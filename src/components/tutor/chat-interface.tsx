@@ -8,9 +8,9 @@ import type { AiTutorInput, AiTutorOutput } from '@/ai/flows/ai-tutor';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Send, User, Bot, Loader2, MessageCircle } from 'lucide-react';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Card, CardContent, CardFooter } from '@/components/ui/card'; // Removed CardHeader, CardTitle
+import { Send, User, Bot, Loader2 } from 'lucide-react'; // Removed MessageCircle
 import { useToast } from "@/hooks/use-toast";
 
 type Message = {
@@ -28,7 +28,6 @@ export default function ChatInterface() {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Scroll to bottom when messages change
     if (scrollAreaRef.current) {
       const scrollViewport = scrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
       if (scrollViewport) {
@@ -38,8 +37,13 @@ export default function ChatInterface() {
   }, [messages]);
   
   useEffect(() => {
-    // Clear messages when subject or language changes
-    setMessages([]);
+    setMessages([
+      {
+        id: 'initial_tutor_greeting',
+        role: 'tutor',
+        content: `Hello! I'm your AI Learning Assistant for ${subject} in ${language}. How can I assist you today?`,
+      },
+    ]);
   }, [subject, language]);
 
 
@@ -61,7 +65,7 @@ export default function ChatInterface() {
         subject,
         language,
         studentMessage: newMessage.content,
-        chatHistory,
+        chatHistory, 
       };
       const result: AiTutorOutput = await aiTutor(input);
       const tutorResponse: Message = {
@@ -90,19 +94,10 @@ export default function ChatInterface() {
 
   return (
     <Card className="w-full shadow-xl flex flex-col flex-grow">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Bot /> AI Learning Assistant ({subject} - {language})
-        </CardTitle>
-      </CardHeader>
+      {/* CardHeader and CardTitle removed */}
       <CardContent className="p-0 flex-grow flex flex-col">
-        <ScrollArea className="flex-grow w-full p-4 border-t border-b" ref={scrollAreaRef}>
-          {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-              <MessageCircle size={48} className="mb-2" />
-              <p>Ask me anything about {subject} in {language}, or request an explanation for a specific concept!</p>
-            </div>
-          )}
+        <ScrollArea className="flex-grow w-full p-4 border-b" ref={scrollAreaRef}> {/* Removed border-t */}
+          {/* Removed the empty state message with MessageCircle icon */}
           {messages.map((msg) => (
             <div
               key={msg.id}
@@ -153,7 +148,7 @@ export default function ChatInterface() {
         >
           <Input
             type="text"
-            placeholder={`Ask about ${subject} or explain a concept...`}
+            placeholder="Ask a question or request an explanation..." // Updated placeholder
             value={currentMessage}
             onChange={(e) => setCurrentMessage(e.target.value)}
             className="flex-grow"

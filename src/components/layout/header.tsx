@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import LogoIcon from '@/components/icons/logo-icon';
 import LanguageSelector from '@/components/shared/language-selector';
+import SubjectSelector from '@/components/shared/subject-selector';
 
 export default function Header() {
   return (
@@ -11,7 +12,10 @@ export default function Header() {
           <LogoIcon className="h-8 w-8" />
           <h1 className="text-2xl font-semibold tracking-tight">EduCore AI</h1>
         </Link>
-        <LanguageSelector />
+        <div className="flex items-center gap-4">
+          <SubjectSelector />
+          <LanguageSelector />
+        </div>
       </div>
     </header>
   );
