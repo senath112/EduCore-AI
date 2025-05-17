@@ -1,6 +1,7 @@
 
 import type { ReactNode } from 'react';
 import Header from './header';
+import CopyrightYear from './copyright-year'; // Import the new component
 
 type MainLayoutProps = {
   children: ReactNode;
@@ -14,7 +15,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
         {children}
       </main>
       <footer className="py-4 text-center text-sm text-muted-foreground">
-        © {new Date().getFullYear()} EduCore AI. All rights reserved.
+        © <CopyrightYear /> EduCore AI. All rights reserved.
       </footer>
     </div>
   );

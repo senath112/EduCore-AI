@@ -3,6 +3,7 @@ import type {Metadata} from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { SettingsProvider } from '@/contexts/settings-context';
+import { AuthProvider } from '@/contexts/auth-context'; // Import AuthProvider
 import MainLayout from '@/components/layout/main-layout';
 import { Toaster } from "@/components/ui/toaster";
 
@@ -29,12 +30,14 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <SettingsProvider>
-          <MainLayout>
-            {children}
-          </MainLayout>
-          <Toaster />
-        </SettingsProvider>
+        <AuthProvider> {/* Wrap with AuthProvider */}
+          <SettingsProvider>
+            <MainLayout>
+              {children}
+            </MainLayout>
+            <Toaster />
+          </SettingsProvider>
+        </AuthProvider>
       </body>
     </html>
   );
