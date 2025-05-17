@@ -42,7 +42,7 @@ export default function Header() {
           ) : user ? (
             <div className="flex items-center gap-3">
               {userProfile && typeof userProfile.credits === 'number' && (
-                <Badge variant="outline" className="flex items-center gap-1 pl-2 pr-2 py-1 text-sm">
+                <Badge variant="secondary" className="flex items-center gap-1 pl-2 pr-2 py-1 text-sm">
                   <CircleDollarSign className="h-4 w-4 text-primary" />
                   {userProfile.credits} Credits
                 </Badge>
