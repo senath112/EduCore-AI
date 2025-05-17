@@ -77,7 +77,7 @@ export default function SignupForm() {
       console.error("Google Sign-in error:", error);
       let description = "An unexpected error occurred during Google Sign-in.";
       if (error.code === 'auth/popup-closed-by-user') {
-        description = "Google Sign-in was cancelled because the popup was closed. Please try again.";
+        description = "Google Sign-in could not complete. The popup window may have been closed or blocked. Please check your browser settings (e.g., pop-up blockers) and try again.";
       } else if (error.message) {
         description = error.message;
       }
