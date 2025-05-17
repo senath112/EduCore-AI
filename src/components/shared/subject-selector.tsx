@@ -35,7 +35,7 @@ export default function SubjectSelector() {
       <Label htmlFor="subject-select" className="sr-only">
         Select Subject
       </Label>
-      <BookOpen className="h-5 w-5 text-muted-foreground" />
+      {/* The <BookOpen /> icon previously here was removed to prevent duplication */}
       <Select
         value={subject}
         onValueChange={(value) => setSubject(value as Subject)}
