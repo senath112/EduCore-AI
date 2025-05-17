@@ -3,14 +3,15 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useSettings } from '@/hooks/use-settings';
+import { useAuth } from '@/hooks/use-auth';
 import { aiTutor } from '@/ai/flows/ai-tutor';
 import type { AiTutorInput, AiTutorOutput } from '@/ai/flows/ai-tutor';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Card, CardContent, CardFooter } from '@/components/ui/card'; // Removed CardHeader, CardTitle
-import { Send, User, Bot, Loader2 } from 'lucide-react'; // Removed MessageCircle
+import { Card, CardContent, CardFooter } from '@/components/ui/card'; 
+import { Send, User, Bot, Loader2 } from 'lucide-react'; 
 import { useToast } from "@/hooks/use-toast";
 
 type Message = {
@@ -21,11 +22,17 @@ type Message = {
 
 export default function ChatInterface() {
   const { subject, language } = useSettings();
+  const { userProfile, deductCreditForAITutor, profileLoading } = useAuth();
   const { toast } = useToast();
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentMessage, setCurrentMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+
+  const currentCredits = userProfile?.credits;
+  const hasCredits = typeof currentCredits === 'number' && currentCredits > 0;
+  const canSendMessage = !isLoading && !profileLoading && currentMessage.trim() !== '';
+
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -48,7 +55,33 @@ export default function ChatInterface() {
 
 
   const handleSendMessage = async () => {
-    if (!currentMessage.trim()) return;
+    if (!canSendMessage) return;
+
+    if (profileLoading) {
+      toast({
+        title: "Loading profile...",
+        description: "Please wait while your profile information is being loaded.",
+      });
+      return;
+    }
+    
+    if (typeof currentCredits !== 'number') {
+        toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Could not determine your credit balance. Please try refreshing.",
+        });
+        return;
+    }
+
+    if (currentCredits <= 0) {
+      toast({
+        variant: "destructive",
+        title: "Out of Credits",
+        description: "You have run out of credits. Please contact support or earn more to continue.",
+      });
+      return;
+    }
 
     const newMessage: Message = {
       id: Date.now().toString(),
@@ -68,12 +101,26 @@ export default function ChatInterface() {
         chatHistory, 
       };
       const result: AiTutorOutput = await aiTutor(input);
+
+      // Deduct credit AFTER successful AI response
+      const creditDeducted = await deductCreditForAITutor();
+      if (!creditDeducted) {
+        // This case should ideally be rare if initial checks pass,
+        // but good to handle (e.g., Firebase update failed)
+        toast({
+            variant: "destructive",
+            title: "Credit Deduction Failed",
+            description: "Could not deduct credit. Your balance might not be up to date.",
+        });
+      }
+
       const tutorResponse: Message = {
         id: Date.now().toString() + '_tutor',
         role: 'tutor',
         content: result.tutorResponse,
       };
       setMessages((prevMessages) => [...prevMessages, tutorResponse]);
+
     } catch (error) {
       console.error("Error with AI Tutor:", error);
       toast({
@@ -91,13 +138,19 @@ export default function ChatInterface() {
       setIsLoading(false);
     }
   };
+  
+  let placeholderText = "Ask a question or request an explanation...";
+  if (profileLoading) {
+    placeholderText = "Loading profile & credits...";
+  } else if (typeof currentCredits === 'number' && currentCredits <= 0) {
+    placeholderText = "You are out of credits.";
+  }
+
 
   return (
     <Card className="w-full shadow-xl flex flex-col flex-grow">
-      {/* CardHeader and CardTitle removed */}
       <CardContent className="p-0 flex-grow flex flex-col">
-        <ScrollArea className="flex-grow w-full p-4 border-b" ref={scrollAreaRef}> {/* Removed border-t */}
-          {/* Removed the empty state message with MessageCircle icon */}
+        <ScrollArea className="flex-grow w-full p-4 border-b" ref={scrollAreaRef}> 
           {messages.map((msg) => (
             <div
               key={msg.id}
@@ -148,13 +201,13 @@ export default function ChatInterface() {
         >
           <Input
             type="text"
-            placeholder="Ask a question or request an explanation..." // Updated placeholder
+            placeholder={placeholderText}
             value={currentMessage}
             onChange={(e) => setCurrentMessage(e.target.value)}
             className="flex-grow"
-            disabled={isLoading}
+            disabled={isLoading || profileLoading || !hasCredits}
           />
-          <Button type="submit" disabled={isLoading || !currentMessage.trim()} size="icon" aria-label="Send message">
+          <Button type="submit" disabled={!canSendMessage || !hasCredits} size="icon" aria-label="Send message">
             {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
         </form>

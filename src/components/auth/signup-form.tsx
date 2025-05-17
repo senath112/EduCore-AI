@@ -18,10 +18,14 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Chrome } from 'lucide-react'; // Added Chrome for Google Icon
+import { useAuth } from '@/hooks/use-auth';
+
+const DEFAULT_SIGNUP_CREDITS = 10;
 
 export default function SignupForm() {
   const router = useRouter();
   const { toast } = useToast();
+  const { refreshUserProfile } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
@@ -48,7 +52,9 @@ export default function SignupForm() {
           alFacingYear: values.alFacingYear,
           phoneNumber: values.phoneNumber,
           email: values.email, 
+          credits: DEFAULT_SIGNUP_CREDITS, // Assign initial credits on email/password signup
         });
+        await refreshUserProfile(); // Refresh profile to get credits in context
         toast({ title: "Signup Successful", description: "Welcome! Redirecting to the app..." });
         router.push('/');
       }
@@ -67,7 +73,9 @@ export default function SignupForm() {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       if (user) {
+        // saveUserData will assign default credits if it's a new user via Google
         await saveUserData(user, { email: user.email, displayName: user.displayName, photoURL: user.photoURL });
+        await refreshUserProfile(); // Refresh profile to get credits in context
         toast({ title: "Google Sign-in Successful", description: "Welcome! Redirecting to the app..." });
         router.push('/');
       }

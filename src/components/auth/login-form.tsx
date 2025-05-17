@@ -18,10 +18,12 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Chrome } from 'lucide-react';
+import { useAuth } from '@/hooks/use-auth';
 
 export default function LoginForm() {
   const router = useRouter();
   const { toast } = useToast();
+  const { refreshUserProfile } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
@@ -37,6 +39,7 @@ export default function LoginForm() {
     setIsLoading(true);
     try {
       await signInWithEmailAndPassword(auth, values.email, values.password);
+      await refreshUserProfile(); // Refresh profile to get credits in context
       toast({ title: "Login Successful", description: "Welcome back! Redirecting..." });
       router.push('/');
     } catch (error: any) {
@@ -55,11 +58,12 @@ export default function LoginForm() {
       const user = result.user;
       if (user) {
         await saveUserData(user, { email: user.email, displayName: user.displayName, photoURL: user.photoURL });
+        await refreshUserProfile(); // Refresh profile to get credits in context
         toast({ title: "Google Sign-in Successful", description: "Welcome! Redirecting..." });
         router.push('/');
       }
     } catch (error: any) {
-      console.error("Google Sign-in error:", error); // Log the full error object
+      console.error("Google Sign-in error:", error); 
       let description = "An unexpected error occurred during Google Sign-in.";
       if (error.code === 'auth/popup-closed-by-user') {
         console.warn("Google Sign-in specific error: auth/popup-closed-by-user. This often relates to browser pop-up blockers, extensions, or OAuth configuration (e.g., Authorized JavaScript Origins in Google Cloud Console). Check browser console for the full error object logged above.");
