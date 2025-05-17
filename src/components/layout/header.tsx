@@ -17,7 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { User as UserIcon, LogOut, LogIn, CircleDollarSign, PlusCircle, Settings } from 'lucide-react'; 
+import { User as UserIcon, LogOut, LogIn, CircleDollarSign, PlusCircle, Settings, CalendarDays, Phone, UserRound } from 'lucide-react'; 
 
 export default function Header() {
   const { user, userProfile, logout, loading: authLoading, profileLoading, handleAddCredits } = useAuth();
@@ -62,15 +62,33 @@ export default function Header() {
                     </Avatar>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56" align="end" forceMount>
+                <DropdownMenuContent className="w-64" align="end" forceMount>
                   <DropdownMenuLabel className="font-normal">
-                    <div className="flex flex-col space-y-1">
+                    <div className="flex flex-col space-y-1.5 py-1">
                       <p className="text-sm font-medium leading-none">
                         {userProfile?.displayName || user.displayName || user.email?.split('@')[0]}
                       </p>
                       <p className="text-xs leading-none text-muted-foreground">
                         {user.email}
                       </p>
+                      {userProfile?.age && (
+                        <div className="flex items-center text-xs leading-none text-muted-foreground pt-1">
+                          <UserRound className="mr-2 h-3.5 w-3.5 opacity-70" />
+                          <span>Age: {userProfile.age}</span>
+                        </div>
+                      )}
+                      {userProfile?.alFacingYear && (
+                         <div className="flex items-center text-xs leading-none text-muted-foreground">
+                           <CalendarDays className="mr-2 h-3.5 w-3.5 opacity-70" />
+                           <span>A/L Year: {userProfile.alFacingYear}</span>
+                         </div>
+                      )}
+                      {userProfile?.phoneNumber && (
+                        <div className="flex items-center text-xs leading-none text-muted-foreground">
+                          <Phone className="mr-2 h-3.5 w-3.5 opacity-70" />
+                          <span>Phone: {userProfile.phoneNumber}</span>
+                        </div>
+                      )}
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
