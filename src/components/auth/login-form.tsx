@@ -54,17 +54,15 @@ export default function LoginForm() {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
       if (user) {
-        // Check if user data exists, if not (first Google login), save it.
-        // This saveUserData call will effectively do an upsert if it includes a check or just overwrites.
-        // For simplicity, we call it; it can be refined to check if user data already exists.
         await saveUserData(user, { email: user.email, displayName: user.displayName, photoURL: user.photoURL });
         toast({ title: "Google Sign-in Successful", description: "Welcome! Redirecting..." });
         router.push('/');
       }
     } catch (error: any) {
-      console.error("Google Sign-in error:", error);
+      console.error("Google Sign-in error:", error); // Log the full error object
       let description = "An unexpected error occurred during Google Sign-in.";
       if (error.code === 'auth/popup-closed-by-user') {
+        console.warn("Google Sign-in specific error: auth/popup-closed-by-user. This often relates to browser pop-up blockers, extensions, or OAuth configuration (e.g., Authorized JavaScript Origins in Google Cloud Console). Check browser console for the full error object logged above.");
         description = "Google Sign-in could not complete. The popup window may have been closed or blocked. Please check your browser settings (e.g., pop-up blockers) and try again.";
       } else if (error.message) {
         description = error.message;
