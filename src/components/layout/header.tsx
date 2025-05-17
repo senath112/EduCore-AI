@@ -17,11 +17,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { User as UserIcon, LogOut, LogIn, CircleDollarSign, Settings } from 'lucide-react'; 
+import { User as UserIcon, LogOut, LogIn, CircleDollarSign, PlusCircle, Settings } from 'lucide-react'; 
 
 export default function Header() {
-  const { user, userProfile, logout, loading: authLoading, profileLoading } = useAuth();
+  const { user, userProfile, logout, loading: authLoading, profileLoading, handleAddCredits } = useAuth();
   const isLoading = authLoading || profileLoading;
+
+  const onAddCreditsClick = async () => {
+    await handleAddCredits(10); // Add 10 credits
+  };
 
   return (
     <header className="bg-card border-b border-border shadow-sm">
@@ -70,10 +74,15 @@ export default function Header() {
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={onAddCreditsClick}>
+                    <PlusCircle className="mr-2 h-4 w-4" />
+                    <span>Add 10 Credits</span>
+                  </DropdownMenuItem>
                   {/* <DropdownMenuItem>
                     <Settings className="mr-2 h-4 w-4" />
                     <span>Settings</span>
                   </DropdownMenuItem> */}
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={logout}>
                     <LogOut className="mr-2 h-4 w-4" />
                     <span>Log out</span>

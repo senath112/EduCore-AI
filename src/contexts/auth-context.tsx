@@ -8,6 +8,8 @@ import { onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { getUserProfile, updateUserCredits, type UserProfile } from '@/services/user-service';
 import { Loader2 } from 'lucide-react';
+import { useToast } from "@/hooks/use-toast";
+
 
 type AuthContextType = {
   user: User | null;
@@ -17,6 +19,7 @@ type AuthContextType = {
   logout: () => Promise<void>;
   deductCreditForAITutor: () => Promise<boolean>;
   refreshUserProfile: () => Promise<void>;
+  handleAddCredits: (amount: number) => Promise<boolean>;
 };
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -26,6 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
+  const { toast } = useToast();
 
   const fetchUserProfile = useCallback(async (currentUser: User | null) => {
     if (currentUser) {
@@ -90,6 +94,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user, fetchUserProfile]);
 
+  const handleAddCredits = async (amount: number): Promise<boolean> => {
+    if (!user || userProfile === null || typeof userProfile.credits !== 'number') {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "User profile not loaded. Cannot add credits.",
+      });
+      return false;
+    }
+    if (amount <= 0) {
+        toast({
+            variant: "destructive",
+            title: "Invalid Amount",
+            description: "Credit amount must be positive.",
+        });
+        return false;
+    }
+
+    const newCreditAmount = (userProfile.credits || 0) + amount;
+    try {
+      await updateUserCredits(user.uid, newCreditAmount);
+      setUserProfile(prevProfile => prevProfile ? { ...prevProfile, credits: newCreditAmount } : null);
+      toast({
+        title: "Credits Added",
+        description: `${amount} credits have been successfully added to your account.`,
+      });
+      return true;
+    } catch (error) {
+      console.error("Failed to add credits:", error);
+      toast({
+        variant: "destructive",
+        title: "Error Adding Credits",
+        description: "Could not add credits to your account. Please try again.",
+      });
+      return false;
+    }
+  };
+
 
   if (loading) {
     return (
@@ -100,7 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, userProfile, loading, profileLoading, logout, deductCreditForAITutor, refreshUserProfile }}>
+    <AuthContext.Provider value={{ user, userProfile, loading, profileLoading, logout, deductCreditForAITutor, refreshUserProfile, handleAddCredits }}>
       {children}
     </AuthContext.Provider>
   );
