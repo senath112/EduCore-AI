@@ -3,9 +3,11 @@ import type {Metadata} from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { SettingsProvider } from '@/contexts/settings-context';
-import { AuthProvider } from '@/contexts/auth-context'; // Import AuthProvider
+import { AuthProvider } from '@/contexts/auth-context';
 import MainLayout from '@/components/layout/main-layout';
 import { Toaster } from "@/components/ui/toaster";
+import CompleteProfileDialog from '@/components/auth/complete-profile-dialog'; // Import the new dialog
+import { useAuth } from '@/hooks/use-auth'; // We'll need a client component to use this hook
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -22,6 +24,23 @@ export const metadata: Metadata = {
   description: 'AI-powered multilingual tutoring and concept explanation.',
 };
 
+// Client component to conditionally render the dialog
+function ConditionalProfileDialog() {
+  const { user, promptForUserDetails, setPromptForUserDetails, profileLoading } = useAuth();
+
+  // Don't show the dialog while profile is loading, or if no user
+  if (profileLoading || !user) {
+    return null;
+  }
+
+  return (
+    <CompleteProfileDialog
+      isOpen={promptForUserDetails}
+      onOpenChange={setPromptForUserDetails}
+    />
+  );
+}
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -30,12 +49,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <AuthProvider> {/* Wrap with AuthProvider */}
+        <AuthProvider>
           <SettingsProvider>
             <MainLayout>
               {children}
             </MainLayout>
             <Toaster />
+            <ConditionalProfileDialog /> {/* Conditionally render the dialog here */}
           </SettingsProvider>
         </AuthProvider>
       </body>
