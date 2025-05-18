@@ -2,9 +2,12 @@
 "use client";
 
 import Link from 'next/link';
+import { useState } from 'react'; // Added useState
 import LogoIcon from '@/components/icons/logo-icon';
 import LanguageSelector from '@/components/shared/language-selector';
 import SubjectSelector from '@/components/shared/subject-selector';
+import ThemeToggleButton from '@/components/shared/theme-toggle-button'; // Will be replaced by SettingsDialog
+import SettingsDialog from '@/components/settings/settings-dialog'; // Added SettingsDialog
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -17,15 +20,25 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { User as UserIcon, LogOut, LogIn, CircleDollarSign, PlusCircle, Settings, CalendarDays, Phone, UserRound } from 'lucide-react'; 
+import { User as UserIcon, LogOut, LogIn, CircleDollarSign, PlusCircle, Settings, CalendarDays, Phone, UserRound, Sun, Moon } from 'lucide-react'; 
+import { useSettings } from '@/hooks/use-settings';
+
 
 export default function Header() {
   const { user, userProfile, logout, loading: authLoading, profileLoading, handleAddCredits } = useAuth();
+  const { theme, setTheme } = useSettings(); // For theme toggle button in header (can be removed if only in dialog)
   const isLoading = authLoading || profileLoading;
+  const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(false);
+
 
   const onAddCreditsClick = async () => {
     await handleAddCredits(10); // Add 10 credits
   };
+
+  const toggleTheme = () => {
+    setTheme(theme === 'dark' ? 'light' : 'dark');
+  };
+
 
   return (
     <header className="bg-card border-b border-border shadow-sm">
@@ -41,6 +54,10 @@ export default function Header() {
               <LanguageSelector />
             </>
           )}
+           {/* Theme toggle button directly in header - can be kept or removed if only in dialog */}
+           <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
+            {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+          </Button>
           {isLoading ? (
             <div className="h-9 w-32 rounded-md bg-muted animate-pulse" /> 
           ) : user ? (
@@ -96,10 +113,10 @@ export default function Header() {
                     <PlusCircle className="mr-2 h-4 w-4" />
                     <span>Add 10 Credits</span>
                   </DropdownMenuItem>
-                  {/* <DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setIsSettingsDialogOpen(true)}>
                     <Settings className="mr-2 h-4 w-4" />
                     <span>Settings</span>
-                  </DropdownMenuItem> */}
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={logout}>
                     <LogOut className="mr-2 h-4 w-4" />
@@ -122,6 +139,7 @@ export default function Header() {
           )}
         </div>
       </div>
+      <SettingsDialog isOpen={isSettingsDialogOpen} onOpenChange={setIsSettingsDialogOpen} />
     </header>
   );
 }
