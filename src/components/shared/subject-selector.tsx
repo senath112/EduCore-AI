@@ -35,12 +35,11 @@ export default function SubjectSelector() {
       <Label htmlFor="subject-select" className="sr-only">
         Select Subject
       </Label>
-      {/* The <BookOpen /> icon previously here was removed to prevent duplication */}
       <Select
         value={subject}
         onValueChange={(value) => setSubject(value as Subject)}
       >
-        <SelectTrigger id="subject-select" className="w-[220px] h-9">
+        <SelectTrigger id="subject-select" className="w-auto min-w-[170px] sm:min-w-[200px] h-9">
            <div className="flex items-center">
             {getIconForSelectedSubject(SUBJECTS.find(s => s.value === subject)?.iconName)}
             <SelectValue placeholder="Select subject" />

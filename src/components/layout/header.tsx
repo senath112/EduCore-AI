@@ -29,12 +29,12 @@ export default function Header() {
 
   return (
     <header className="bg-card border-b border-border shadow-sm">
-      <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+      <div className="container mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-y-3">
         <Link href="/" className="flex items-center gap-2 text-primary hover:opacity-80 transition-opacity">
           <LogoIcon className="h-8 w-8" />
-          <h1 className="text-2xl font-semibold tracking-tight">EduCore AI</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">EduCore AI</h1>
         </Link>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center justify-end gap-y-2 gap-x-3 sm:gap-x-4">
           {user && (
             <>
               <SubjectSelector />
@@ -62,7 +62,7 @@ export default function Header() {
                     </Avatar>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-64" align="end" forceMount>
+                <DropdownMenuContent className="w-56 sm:w-64" align="end" forceMount>
                   <DropdownMenuLabel className="font-normal">
                     <div className="flex flex-col space-y-1.5 py-1">
                       <p className="text-sm font-medium leading-none">
