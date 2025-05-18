@@ -7,7 +7,7 @@ import { useSettings } from '@/hooks/use-settings';
 import { useAuth } from '@/hooks/use-auth';
 import { aiTutor } from '@/ai/flows/ai-tutor';
 import type { AiTutorInput, AiTutorOutput } from '@/ai/flows/ai-tutor';
-import { saveChatMessage, loadChatHistory, type StoredChatMessage } from '@/services/user-service';
+import { saveChatMessage, loadChatHistory, type StoredChatMessage, type StoredChatMessageAttachment } from '@/services/user-service';
 import { saveUserQuestion, saveFlaggedResponse } from '@/services/user-service';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -20,15 +20,15 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 type MessageAttachment = {
   name: string;
-  previewUrl: string; // For local image preview (URL.createObjectURL)
+  previewUrl: string; 
   type: 'image';
 };
 
 type Message = {
-  id: string; // Firebase key or temporary client-side ID
+  id: string; 
   role: 'student' | 'tutor';
   content: string;
-  timestamp?: string; // From Firebase, or client-generated for optimistic updates
+  timestamp?: string; 
   attachment?: MessageAttachment;
 };
 
@@ -61,19 +61,18 @@ export default function ChatInterface() {
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // This ref tracks if the initial greeting for the current context (user/subject/language) has been processed.
-  const initialGreetingProcessedRef = useRef(false);
-
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  
+  // Refs to manage greeting logic robustly, especially with StrictMode
+  const initialLoadDoneForCurrentContext = useRef(false);
+  const lastContextKey = useRef<string | null>(null);
 
   const currentCredits = userProfile?.credits;
   const hasSufficientCredits = typeof currentCredits === 'number' && currentCredits > 0;
   
   const canSubmitMessage = !isAISending && !isHistoryLoading && !profileLoading && (currentMessage.trim() !== '' || !!selectedImageFile);
 
-
   useEffect(() => {
-    // Scroll to bottom when new messages arrive or AI is typing
     if (scrollAreaRef.current) {
       const scrollViewport = scrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
       if (scrollViewport) {
@@ -83,63 +82,68 @@ export default function ChatInterface() {
   }, [messages, isAISending]);
 
   useEffect(() => {
-    // Reset greeting processed flag when context changes
-    initialGreetingProcessedRef.current = false;
-  }, [user, subject, language]);
-
-
-  useEffect(() => {
     if (!user) {
       setMessages([]);
       setIsHistoryLoading(false);
+      initialLoadDoneForCurrentContext.current = false; 
+      lastContextKey.current = null;
+      if (imagePreviewUrl) {
+        URL.revokeObjectURL(imagePreviewUrl);
+        setImagePreviewUrl(null);
+      }
+      setSelectedImageFile(null);
       return;
+    }
+
+    const currentContextKey = `${user.uid}_${subject}_${language}`;
+
+    if (lastContextKey.current !== currentContextKey) {
+      initialLoadDoneForCurrentContext.current = false;
+      lastContextKey.current = currentContextKey;
+      setMessages([]); // Clear messages for new context before loading
     }
 
     setIsHistoryLoading(true);
     const unsubscribe = loadChatHistory(user.uid, (loadedDbMessages) => {
       const formattedMessages: Message[] = loadedDbMessages.map(dbMsg => ({
-        id: dbMsg.id!, // id should be set by loadChatHistory from Firebase key
+        id: dbMsg.id!,
         role: dbMsg.role,
         content: dbMsg.content,
         timestamp: dbMsg.timestamp,
         attachment: dbMsg.attachment ? {
           name: dbMsg.attachment.name,
           type: dbMsg.attachment.type as 'image',
-          // Note: previewUrl for persisted images isn't directly stored in DB.
-          // If you need to show images from history, you'd need to store URLs from Firebase Storage.
-          // For now, this structure supports showing previews of *newly selected* images.
-          // And if you were to store a storage URL, you'd populate previewUrl from that.
-          // For simplicity, attachments from history won't show image previews for now.
-          previewUrl: '', // Placeholder, ideally from Firebase Storage if images are stored.
+          previewUrl: '', 
         } : undefined,
       }));
+      
       setMessages(formattedMessages);
+      setIsHistoryLoading(false); // Set loading false *before* greeting logic
 
-      if (!initialGreetingProcessedRef.current) {
+      if (!initialLoadDoneForCurrentContext.current) {
         if (formattedMessages.length === 0) {
           const greeting = `Hello! I'm your AI Learning Assistant for ${subject} in ${language}. How can I assist you today?`;
           saveChatMessage(user.uid, 'tutor', greeting);
-          // The listener will pick up this new message and update the UI.
+          // The listener will pick this up and update formattedMessages/messages.
         }
-        initialGreetingProcessedRef.current = true; // Mark as processed for this context
+        initialLoadDoneForCurrentContext.current = true;
       }
-      setIsHistoryLoading(false);
     });
 
     return () => {
       unsubscribe();
       if (imagePreviewUrl) {
-        URL.revokeObjectURL(imagePreviewUrl); // Clean up object URL
+        URL.revokeObjectURL(imagePreviewUrl);
       }
     };
-  }, [user, subject, language]); // Reload history if user, subject, or language changes
+  }, [user, subject, language]);
 
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && file.type.startsWith('image/')) {
       if (imagePreviewUrl) {
-        URL.revokeObjectURL(imagePreviewUrl); // Revoke previous object URL
+        URL.revokeObjectURL(imagePreviewUrl); 
       }
       setSelectedImageFile(file);
       setImagePreviewUrl(URL.createObjectURL(file));
@@ -147,7 +151,7 @@ export default function ChatInterface() {
       toast({ variant: "destructive", title: "Invalid File", description: "Please select an image file." });
       setSelectedImageFile(null);
       setImagePreviewUrl(null);
-      if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
+      if (fileInputRef.current) fileInputRef.current.value = ""; 
     }
   };
 
@@ -158,7 +162,7 @@ export default function ChatInterface() {
     setSelectedImageFile(null);
     setImagePreviewUrl(null);
     if (fileInputRef.current) {
-      fileInputRef.current.value = ""; // Reset the file input
+      fileInputRef.current.value = ""; 
     }
   };
 
@@ -189,16 +193,23 @@ export default function ChatInterface() {
     setIsAISending(true);
     
     let imageDataUriForAI: string | undefined = undefined;
-    let studentAttachment: MessageAttachment | undefined = undefined;
+    let studentAttachmentForDB: StoredChatMessageAttachment | undefined = undefined;
+    let studentAttachmentForUI: MessageAttachment | undefined = undefined;
+
 
     if (selectedImageFile) {
       try {
         imageDataUriForAI = await convertFileToDataUri(selectedImageFile);
-        studentAttachment = {
+        studentAttachmentForDB = {
           name: selectedImageFile.name,
-          previewUrl: imagePreviewUrl!, // Should exist if selectedImageFile exists
           type: 'image',
         };
+        studentAttachmentForUI = { // For optimistic UI update
+            name: selectedImageFile.name,
+            previewUrl: imagePreviewUrl!,
+            type: 'image',
+        };
+
       } catch (error) {
         console.error("Error converting file to data URI:", error);
         toast({ variant: "destructive", title: "File Error", description: "Could not process the image file." });
@@ -209,30 +220,45 @@ export default function ChatInterface() {
 
     const studentMessageContent = currentMessage;
     
-    // Save student message to DB (listener will update UI)
-    await saveChatMessage(user.uid, 'student', studentMessageContent, studentAttachment ? { name: studentAttachment.name, type: 'image' } : undefined);
+    // Optimistically add student message to UI (optional, but good for UX)
+    // const tempStudentMessageId = `temp_${Date.now()}`;
+    // setMessages(prevMessages => [
+    //   ...prevMessages,
+    //   {
+    //     id: tempStudentMessageId,
+    //     role: 'student',
+    //     content: studentMessageContent,
+    //     attachment: studentAttachmentForUI,
+    //     timestamp: new Date().toISOString(),
+    //   }
+    // ]);
+
+    // Save student message to DB (listener will update UI comprehensively)
+    await saveChatMessage(user.uid, 'student', studentMessageContent, studentAttachmentForDB);
     
-    // Save question log
     try {
       const userDisplayName = userProfile?.displayName || user.displayName || null;
-      await saveUserQuestion(user.uid, userDisplayName, studentMessageContent + (studentAttachment ? ` [Attached: ${studentAttachment.name}]` : ''));
+      await saveUserQuestion(user.uid, userDisplayName, studentMessageContent + (studentAttachmentForDB ? ` [Attached: ${studentAttachmentForDB.name}]` : ''));
     } catch (error) {
       console.error("Failed to save user question:", error);
     }
 
+    const messageToSendToAI = currentMessage; // Capture current message before clearing
     setCurrentMessage('');
     clearSelectedFile();
 
-
     try {
+      // Construct chat history for AI *before* adding the current student message that will be saved by the listener
+      // The AI prompt expects studentMessage separately.
+      // Let's use the 'messages' state directly as it reflects the history seen by user *before* this new message is fully processed by DB listener.
       const chatHistoryForAI = messages
-        .filter(msg => msg.role === 'student' || msg.role === 'tutor') // Ensure only student/tutor roles
+        .filter(msg => msg.role === 'student' || msg.role === 'tutor')
         .map(msg => ({ role: msg.role, content: msg.content }));
       
       const input: AiTutorInput = {
         subject,
         language,
-        studentMessage: studentMessageContent,
+        studentMessage: messageToSendToAI, // Use the captured message
         imageDataUri: imageDataUriForAI,
         chatHistory: chatHistoryForAI,
       };
@@ -246,14 +272,12 @@ export default function ChatInterface() {
             description: "Could not deduct credit. Your balance might be outdated.",
         });
       }
-      // Save AI response to DB (listener will update UI)
       await saveChatMessage(user.uid, 'tutor', result.tutorResponse);
 
     } catch (error: any) {
       console.error("Error with AI Tutor:", error);
       const errorMsg = error.message || "Failed to get response from AI Tutor. Please try again.";
       toast({ variant: "destructive", title: "AI Tutor Error", description: errorMsg });
-      // Save error response to DB
       await saveChatMessage(user.uid, 'tutor', "I'm sorry, I encountered an error. Please try asking again.");
     } finally {
       setIsAISending(false);
@@ -291,7 +315,7 @@ export default function ChatInterface() {
     placeholderText = "Loading chat history...";
   } else if (profileLoading) {
     placeholderText = "Loading profile & credits...";
-  } else if (!hasSufficientCredits) {
+  } else if (!hasSufficientCredits && user) { // Check user to avoid showing this on logout
     placeholderText = "You are out of credits. Please add more.";
   }
 
@@ -347,7 +371,7 @@ export default function ChatInterface() {
                    <AvatarFallback><User size={18}/></AvatarFallback>
                  </Avatar>
               )}
-              {msg.role === 'tutor' && msg.id !== 'initial_tutor_greeting' && ( // Ensure not to flag the first greeting if it has this ID
+              {msg.role === 'tutor' && !msg.content.startsWith("Hello! I'm your AI Learning Assistant for") && ( 
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button 
@@ -411,7 +435,7 @@ export default function ChatInterface() {
             variant="ghost" 
             size="icon" 
             onClick={() => fileInputRef.current?.click()}
-            disabled={isAISending || isHistoryLoading || profileLoading || !hasSufficientCredits}
+            disabled={isAISending || isHistoryLoading || profileLoading || (!hasSufficientCredits && !!user)}
             aria-label="Attach image"
           >
             <Paperclip className="h-5 w-5" />
@@ -422,9 +446,9 @@ export default function ChatInterface() {
             value={currentMessage}
             onChange={(e) => setCurrentMessage(e.target.value)}
             className="flex-grow"
-            disabled={isAISending || isHistoryLoading || profileLoading || !hasSufficientCredits}
+            disabled={isAISending || isHistoryLoading || profileLoading || (!hasSufficientCredits && !!user)}
           />
-          <Button type="submit" disabled={!canSubmitMessage || !hasSufficientCredits} size="icon" aria-label="Send message">
+          <Button type="submit" disabled={!canSubmitMessage || (!hasSufficientCredits && !!user)} size="icon" aria-label="Send message">
             {isAISending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
         </form>
@@ -432,3 +456,4 @@ export default function ChatInterface() {
     </Card>
   );
 }
+
