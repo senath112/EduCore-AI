@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+// Removed: import { auth } from '@/lib/firebase'; // auth will come from context
 import { saveUserData } from '@/services/user-service';
 import type { SignupFormValues } from '@/lib/schemas';
 import { SignupFormSchema } from '@/lib/schemas';
@@ -25,7 +25,7 @@ const DEFAULT_SIGNUP_CREDITS = 10;
 export default function SignupForm() {
   const router = useRouter();
   const { toast } = useToast();
-  const { refreshUserProfile } = useAuth();
+  const { refreshUserProfile, authInstance } = useAuth(); // Get authInstance
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
@@ -42,19 +42,23 @@ export default function SignupForm() {
   });
 
   const onSubmit = async (values: SignupFormValues) => {
+    if (!authInstance) {
+      toast({ variant: "destructive", title: "Error", description: "Authentication service not ready. Please try again." });
+      return;
+    }
     setIsLoading(true);
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, values.email, values.password);
+      const userCredential = await createUserWithEmailAndPassword(authInstance, values.email, values.password);
       const user = userCredential.user;
       if (user) {
         await saveUserData(user, {
           age: values.age,
           alFacingYear: values.alFacingYear,
           phoneNumber: values.phoneNumber,
-          email: values.email, 
-          credits: DEFAULT_SIGNUP_CREDITS, // Assign initial credits on email/password signup
+          email: values.email,
+          credits: DEFAULT_SIGNUP_CREDITS,
         });
-        await refreshUserProfile(); // Refresh profile to get credits in context
+        await refreshUserProfile();
         toast({ title: "Signup Successful", description: "Welcome! Redirecting to the app..." });
         router.push('/');
       }
@@ -67,20 +71,23 @@ export default function SignupForm() {
   };
 
   const handleGoogleSignIn = async () => {
+    if (!authInstance) {
+      toast({ variant: "destructive", title: "Error", description: "Authentication service not ready. Please try again." });
+      return;
+    }
     setIsGoogleLoading(true);
     const provider = new GoogleAuthProvider();
     try {
-      const result = await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(authInstance, provider);
       const user = result.user;
       if (user) {
-        // saveUserData will assign default credits if it's a new user via Google
         await saveUserData(user, { email: user.email, displayName: user.displayName, photoURL: user.photoURL });
-        await refreshUserProfile(); // Refresh profile to get credits in context
+        await refreshUserProfile();
         toast({ title: "Google Sign-in Successful", description: "Welcome! Redirecting to the app..." });
         router.push('/');
       }
     } catch (error: any) {
-      console.error("Google Sign-in error:", error); 
+      console.error("Google Sign-in error:", error);
       let description = "An unexpected error occurred during Google Sign-in.";
       if (error.code === 'auth/popup-closed-by-user') {
         console.warn("Google Sign-in specific error: auth/popup-closed-by-user. This often relates to browser pop-up blockers, extensions, or OAuth configuration (e.g., Authorized JavaScript Origins in Google Cloud Console). Check browser console for the full error object logged above.");
@@ -188,7 +195,7 @@ export default function SignupForm() {
             </Button>
             <Button variant="outline" type="button" className="w-full" onClick={handleGoogleSignIn} disabled={isLoading || isGoogleLoading}>
               {isGoogleLoading ? <Loader2 className="animate-spin" /> : (
-                <svg viewBox="0 0 48 48" role="img" aria-label="Google logo">
+                 <svg className="mr-2 h-4 w-4" viewBox="0 0 48 48" role="img" aria-label="Google logo">
                   <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
                   <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
                   <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>

@@ -1,9 +1,13 @@
 
 import { ref, set, get, child, push } from 'firebase/database';
-import { database } from '@/lib/firebase';
+import { getDatabase, type Database } from 'firebase/database'; // Added getDatabase, Database type
+import { app } from '@/lib/firebase'; // Import app
 import type { User } from 'firebase/auth';
 
 const DEFAULT_INITIAL_CREDITS = 10;
+
+// Obtain database instance here
+const database: Database = getDatabase(app);
 
 export interface UserProfile {
   email: string | null;
@@ -64,6 +68,7 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
     }
   } catch (error) {
     console.error("Error fetching existing user profile during saveUserData:", error);
+    // Continue even if fetching existing profile fails, will create new or overwrite with new data.
   }
 
   const now = new Date().toISOString();
@@ -89,6 +94,7 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
     lastUpdatedAt: now,
   };
 
+  // Remove undefined properties before saving
   const cleanedProfileData = Object.entries(profileData).reduce((acc, [key, value]) => {
     if (value !== undefined) {
       acc[key as keyof UserProfile] = value;
@@ -100,7 +106,7 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
   try {
     await set(userProfileRef, cleanedProfileData);
     console.log('User data saved successfully for UID:', user.uid);
-    return cleanedProfileData as UserProfile;
+    return cleanedProfileData as UserProfile; // Return the saved data
   } catch (error) {
     console.error('Error saving user data:', error);
     throw error;
@@ -126,7 +132,7 @@ export async function updateUserCredits(userId: string, newCreditAmount: number)
 
 export async function saveUserQuestion(
   userId: string,
-  displayName: string | null | undefined,
+  displayName: string | null | undefined, // Ensure displayName is passed
   questionContent: string
 ): Promise<void> {
   if (!userId || !questionContent.trim()) {
@@ -135,12 +141,12 @@ export async function saveUserQuestion(
   }
 
   const userQueriesHistoryRef = ref(database, `userQuestionLogs/${userId}/history`);
-  const newQuestionRef = push(userQueriesHistoryRef); 
+  const newQuestionRef = push(userQueriesHistoryRef);
 
   const questionLog: UserQuestionLog = {
     timestamp: new Date().toISOString(),
     userId: userId,
-    userDisplayName: displayName || null, 
+    userDisplayName: displayName || null, // Use the passed display name
     questionContent: questionContent,
   };
 
@@ -149,6 +155,7 @@ export async function saveUserQuestion(
     console.log(`User question saved for userId: ${userId} with queryId: ${newQuestionRef.key}`);
   } catch (error) {
     console.error(`Error saving user question for userId: ${userId}:`, error);
+    // Optionally re-throw or handle as appropriate for your app's error strategy
   }
 }
 
@@ -168,7 +175,7 @@ export async function saveFlaggedResponse(
   }
 
   const flaggedResponsesRef = ref(database, 'flaggedResponses');
-  const newFlagRef = push(flaggedResponsesRef); // Generates a unique ID for the flag
+  const newFlagRef = push(flaggedResponsesRef);
 
   const flaggedResponseLog: FlaggedResponseLog = {
     timestamp: new Date().toISOString(),
@@ -189,4 +196,3 @@ export async function saveFlaggedResponse(
     throw error;
   }
 }
-
