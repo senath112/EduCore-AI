@@ -63,9 +63,9 @@ export default function ChatInterface() {
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   
-  // Refs to manage greeting logic robustly, especially with StrictMode
-  const initialLoadDoneForCurrentContext = useRef(false);
   const lastContextKey = useRef<string | null>(null);
+  const [greetingSentForContext, setGreetingSentForContext] = useState<string | null>(null);
+
 
   const currentCredits = userProfile?.credits;
   const hasSufficientCredits = typeof currentCredits === 'number' && currentCredits > 0;
@@ -81,11 +81,12 @@ export default function ChatInterface() {
     }
   }, [messages, isAISending]);
 
+  // Effect for loading chat history
   useEffect(() => {
     if (!user) {
       setMessages([]);
       setIsHistoryLoading(false);
-      initialLoadDoneForCurrentContext.current = false; 
+      setGreetingSentForContext(null); 
       lastContextKey.current = null;
       if (imagePreviewUrl) {
         URL.revokeObjectURL(imagePreviewUrl);
@@ -95,15 +96,23 @@ export default function ChatInterface() {
       return;
     }
 
-    const currentContextKey = `${user.uid}_${subject}_${language}`;
+    const currentContextKeyVal = `${user.uid}_${subject}_${language}`;
 
-    if (lastContextKey.current !== currentContextKey) {
-      initialLoadDoneForCurrentContext.current = false;
-      lastContextKey.current = currentContextKey;
-      setMessages([]); // Clear messages for new context before loading
+    if (lastContextKey.current !== currentContextKeyVal) {
+      lastContextKey.current = currentContextKeyVal;
+      setGreetingSentForContext(null); // Reset greeting flag for new context
+      setMessages([]); // Clear messages for new context
+      setIsHistoryLoading(true); // Set loading true for new context
+    } else {
+      // If context is the same, we might still be loading or have loaded.
+      // Let the greeting useEffect handle logic if needed.
+      // No need to set isHistoryLoading(true) if context didn't change,
+      // unless it's the very first load.
+      if (messages.length === 0 && !greetingSentForContext) { // Catch initial load for the first context
+         setIsHistoryLoading(true);
+      }
     }
 
-    setIsHistoryLoading(true);
     const unsubscribe = loadChatHistory(user.uid, (loadedDbMessages) => {
       const formattedMessages: Message[] = loadedDbMessages.map(dbMsg => ({
         id: dbMsg.id!,
@@ -118,16 +127,7 @@ export default function ChatInterface() {
       }));
       
       setMessages(formattedMessages);
-      setIsHistoryLoading(false); // Set loading false *before* greeting logic
-
-      if (!initialLoadDoneForCurrentContext.current) {
-        if (formattedMessages.length === 0) {
-          const greeting = `Hello! I'm your AI Learning Assistant for ${subject} in ${language}. How can I assist you today?`;
-          saveChatMessage(user.uid, 'tutor', greeting);
-          // The listener will pick this up and update formattedMessages/messages.
-        }
-        initialLoadDoneForCurrentContext.current = true;
-      }
+      setIsHistoryLoading(false);
     });
 
     return () => {
@@ -136,7 +136,25 @@ export default function ChatInterface() {
         URL.revokeObjectURL(imagePreviewUrl);
       }
     };
-  }, [user, subject, language]);
+  }, [user, subject, language]); // Rerun ONLY when user, subject, or language changes
+
+  // Effect for sending the initial greeting
+  useEffect(() => {
+    if (!user || isHistoryLoading || profileLoading) {
+      return; // Don't do anything if no user, or history/profile is still loading
+    }
+
+    const currentContextKeyVal = `${user.uid}_${subject}_${language}`;
+
+    // If messages are loaded (isHistoryLoading is false), history is empty,
+    // and greeting hasn't been sent for this specific context yet:
+    if (messages.length === 0 && greetingSentForContext !== currentContextKeyVal) {
+      const greeting = `Hello! I'm your AI Learning Assistant for ${subject} in ${language}. How can I assist you today?`;
+      saveChatMessage(user.uid, 'tutor', greeting);
+      // Mark that greeting has been sent for this context to prevent duplicates
+      setGreetingSentForContext(currentContextKeyVal); 
+    }
+  }, [user, subject, language, messages, isHistoryLoading, profileLoading, greetingSentForContext]);
 
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -194,9 +212,7 @@ export default function ChatInterface() {
     
     let imageDataUriForAI: string | undefined = undefined;
     let studentAttachmentForDB: StoredChatMessageAttachment | undefined = undefined;
-    let studentAttachmentForUI: MessageAttachment | undefined = undefined;
-
-
+    
     if (selectedImageFile) {
       try {
         imageDataUriForAI = await convertFileToDataUri(selectedImageFile);
@@ -204,12 +220,6 @@ export default function ChatInterface() {
           name: selectedImageFile.name,
           type: 'image',
         };
-        studentAttachmentForUI = { // For optimistic UI update
-            name: selectedImageFile.name,
-            previewUrl: imagePreviewUrl!,
-            type: 'image',
-        };
-
       } catch (error) {
         console.error("Error converting file to data URI:", error);
         toast({ variant: "destructive", title: "File Error", description: "Could not process the image file." });
@@ -219,21 +229,6 @@ export default function ChatInterface() {
     }
 
     const studentMessageContent = currentMessage;
-    
-    // Optimistically add student message to UI (optional, but good for UX)
-    // const tempStudentMessageId = `temp_${Date.now()}`;
-    // setMessages(prevMessages => [
-    //   ...prevMessages,
-    //   {
-    //     id: tempStudentMessageId,
-    //     role: 'student',
-    //     content: studentMessageContent,
-    //     attachment: studentAttachmentForUI,
-    //     timestamp: new Date().toISOString(),
-    //   }
-    // ]);
-
-    // Save student message to DB (listener will update UI comprehensively)
     await saveChatMessage(user.uid, 'student', studentMessageContent, studentAttachmentForDB);
     
     try {
@@ -243,14 +238,11 @@ export default function ChatInterface() {
       console.error("Failed to save user question:", error);
     }
 
-    const messageToSendToAI = currentMessage; // Capture current message before clearing
+    const messageToSendToAI = currentMessage; 
     setCurrentMessage('');
     clearSelectedFile();
 
     try {
-      // Construct chat history for AI *before* adding the current student message that will be saved by the listener
-      // The AI prompt expects studentMessage separately.
-      // Let's use the 'messages' state directly as it reflects the history seen by user *before* this new message is fully processed by DB listener.
       const chatHistoryForAI = messages
         .filter(msg => msg.role === 'student' || msg.role === 'tutor')
         .map(msg => ({ role: msg.role, content: msg.content }));
@@ -258,7 +250,7 @@ export default function ChatInterface() {
       const input: AiTutorInput = {
         subject,
         language,
-        studentMessage: messageToSendToAI, // Use the captured message
+        studentMessage: messageToSendToAI, 
         imageDataUri: imageDataUriForAI,
         chatHistory: chatHistoryForAI,
       };
@@ -315,7 +307,7 @@ export default function ChatInterface() {
     placeholderText = "Loading chat history...";
   } else if (profileLoading) {
     placeholderText = "Loading profile & credits...";
-  } else if (!hasSufficientCredits && user) { // Check user to avoid showing this on logout
+  } else if (!hasSufficientCredits && user) { 
     placeholderText = "You are out of credits. Please add more.";
   }
 
@@ -361,6 +353,12 @@ export default function ChatInterface() {
                     <p className="text-xs mt-1 italic">{msg.attachment.name}</p>
                   </div>
                 )}
+                 {msg.attachment && msg.attachment.type === 'image' && !msg.attachment.previewUrl && (
+                    // Display some placeholder or info for historical images without direct preview URL
+                    <div className="mb-2 p-2 border rounded-md bg-muted/50 text-xs italic">
+                      Image attached: {msg.attachment.name} (preview not available for historical attachments)
+                    </div>
+                  )}
                 <p
                   className="text-sm whitespace-pre-wrap"
                   dangerouslySetInnerHTML={formatBoldText(msg.content)}
@@ -371,7 +369,10 @@ export default function ChatInterface() {
                    <AvatarFallback><User size={18}/></AvatarFallback>
                  </Avatar>
               )}
-              {msg.role === 'tutor' && !msg.content.startsWith("Hello! I'm your AI Learning Assistant for") && ( 
+              {msg.role === 'tutor' && 
+                !msg.content.startsWith("Hello! I'm your AI Learning Assistant for") && 
+                msg.content !== "I'm sorry, I encountered an error. Please try asking again." && // Don't allow flagging error messages
+                (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button 
