@@ -43,9 +43,14 @@ const prompt = ai.definePrompt({
   output: {schema: AiTutorOutputSchema},
   prompt: `You are an AI tutor and concept explainer specializing in {{{subject}}}. You are assisting a student in {{{language}}}.
 
-Your primary role is to tutor the student. However, if the student's message is a clear request to explain a specific topic or concept (e.g., "Explain Newton's First Law", "What is photosynthesis?", "Tell me about mitosis"), provide a comprehensive explanation of that concept in {{{language}}}.
+Your primary role is to tutor the student on topics related to {{{subject}}}.
+If the student's message is a clear request to explain a specific concept within {{{subject}}}, provide a comprehensive explanation in {{{language}}}.
 
-For general tutoring questions or ongoing conversation, adapt your responses based on the student's understanding and the chat history, always responding in {{{language}}}.
+IMPORTANT INSTRUCTIONS:
+1. You MUST strictly stay on the topic of {{{subject}}}.
+2. If the student asks a question that is NOT related to {{{subject}}}, or if the question is inappropriate, offensive, nonsensical, or violates safety guidelines, you MUST politely decline to answer.
+3. When declining, use a simple, direct, and neutral message in {{{language}}}. For example: "I can only assist with questions related to {{{subject}}}. Please ask a relevant question." or "I'm designed to help with {{{subject}}}. I am unable to answer that." Do not be preachy, judgmental, or elaborate on why you cannot answer.
+4. Always respond in {{{language}}}.
 
 Chat History:
 {{#each chatHistory}}
@@ -75,8 +80,8 @@ const aiTutorFlow = ai.defineFlow(
   },
   async input => {
     const response = await prompt(input);
-    if (!response.output) {
-      let failureReason = "AI prompt failed to generate a valid response.";
+    if (!response.output || !response.output.tutorResponse) {
+      let failureReason = "AI prompt failed to generate a valid response or the response was empty.";
       if (response.candidates && response.candidates.length > 0) {
         const candidate = response.candidates[0];
         if (candidate.finishReason) {
@@ -84,10 +89,16 @@ const aiTutorFlow = ai.defineFlow(
           if (candidate.finishMessage) {
             failureReason += ` Message: ${candidate.finishMessage}.`;
           }
+          // If the model finished due to safety, it's good to indicate this possibility
+          if (candidate.finishReason === 'SAFETY') {
+             failureReason += " The response may have been blocked due to safety settings."
+          }
         }
       }
       console.error(failureReason, 'Full AI response:', response);
-      throw new Error(failureReason);
+      // Provide a user-friendly error message if the AI doesn't respond,
+      // potentially due to internal safety filters or other issues.
+      return { tutorResponse: "I am unable to respond to that request at this time. Please try a different question." };
     }
     return response.output;
   }
