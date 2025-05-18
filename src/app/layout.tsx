@@ -6,8 +6,9 @@ import { SettingsProvider } from '@/contexts/settings-context';
 import { AuthProvider } from '@/contexts/auth-context';
 import MainLayout from '@/components/layout/main-layout';
 import { Toaster } from "@/components/ui/toaster";
-import CompleteProfileDialog from '@/components/auth/complete-profile-dialog';
-import { useAuth } from '@/hooks/use-auth'; // This import is fine at the top level
+// Removed: import CompleteProfileDialog from '@/components/auth/complete-profile-dialog';
+// Removed: import { useAuth } from '@/hooks/use-auth';
+import ConditionalProfileDialogClient from '@/components/layout/conditional-profile-dialog-client'; // Import the new component
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -24,23 +25,7 @@ export const metadata: Metadata = {
   description: 'AI-powered multilingual tutoring and concept explanation.',
 };
 
-// Create a new Client Component to handle the conditional dialog
-function ConditionalProfileDialogClient() {
-  "use client"; // Mark this component as a Client Component
-  const { user, promptForUserDetails, setPromptForUserDetails, profileLoading } = useAuth();
-
-  // Don't show the dialog while profile is loading, or if no user, or if not prompting
-  if (profileLoading || !user || !promptForUserDetails) {
-    return null;
-  }
-
-  return (
-    <CompleteProfileDialog
-      isOpen={promptForUserDetails}
-      onOpenChange={setPromptForUserDetails}
-    />
-  );
-}
+// Removed ConditionalProfileDialogClient function definition from here
 
 export default function RootLayout({
   children,
@@ -56,7 +41,6 @@ export default function RootLayout({
               {children}
             </MainLayout>
             <Toaster />
-            {/* Render the new client component here */}
             <ConditionalProfileDialogClient />
           </SettingsProvider>
         </AuthProvider>
