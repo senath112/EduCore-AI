@@ -19,10 +19,12 @@ const AiTutorInputSchema = z.object({
   subject: z.enum(SUBJECTS.map(s => s.value) as [Subject, ...Subject[]]).describe('The subject for the tutoring session.'),
   language: z.enum(LANGUAGES.map(l => l.value) as [Language, ...Language[]]).describe('The preferred language for the tutoring session.'),
   studentMessage: z.string().describe('The student message to respond to.'),
+  imageDataUri: z.string().optional().describe("An image file provided by the student, as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'."),
   chatHistory: z.array(
     z.object({
       role: z.enum(['student', 'tutor']),
       content: z.string(),
+      // Attachment info is not directly passed in history to AI, it's part of the current studentMessage context if needed
     })
   ).optional().describe('The chat history of the tutoring session.'),
 });
@@ -62,7 +64,11 @@ Tutor: {{{content}}}
 {{/ifEquals}}
 {{/each}}
 
-Student: {{{studentMessage}}}
+Student's Question: {{{studentMessage}}}
+{{#if imageDataUri}}
+The student has also provided an image. Refer to this image if relevant to the question.
+Image: {{media url=imageDataUri}}
+{{/if}}
 Tutor:`, // Keep the tutor prompt open ended
   templateHelpers: {
     ifEquals: function (arg1: any, arg2: any, options: any) {
@@ -89,18 +95,14 @@ const aiTutorFlow = ai.defineFlow(
           if (candidate.finishMessage) {
             failureReason += ` Message: ${candidate.finishMessage}.`;
           }
-          // If the model finished due to safety, it's good to indicate this possibility
           if (candidate.finishReason === 'SAFETY') {
              failureReason += " The response may have been blocked due to safety settings."
           }
         }
       }
       console.error(failureReason, 'Full AI response:', response);
-      // Provide a user-friendly error message if the AI doesn't respond,
-      // potentially due to internal safety filters or other issues.
-      return { tutorResponse: "I am unable to respond to that request at this time. Please try a different question." };
+      return { tutorResponse: "I am unable to respond to that request at this time. Please try a different question or check your input." };
     }
     return response.output;
   }
 );
-

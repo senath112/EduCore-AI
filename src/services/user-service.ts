@@ -1,12 +1,10 @@
 
-import { ref, set, get, child, push } from 'firebase/database';
-import { getDatabase, type Database } from 'firebase/database'; // Added getDatabase, Database type
-import { app } from '@/lib/firebase'; // Import app
+import { ref, set, get, push, serverTimestamp, query, orderByChild, onValue, off, type DatabaseReference } from 'firebase/database';
+import { getDatabase, type Database } from 'firebase/database';
+import { app } from '@/lib/firebase';
 import type { User } from 'firebase/auth';
 
 const DEFAULT_INITIAL_CREDITS = 10;
-
-// Obtain database instance here
 const database: Database = getDatabase(app);
 
 export interface UserProfile {
@@ -17,19 +15,19 @@ export interface UserProfile {
   alFacingYear?: number;
   phoneNumber?: string;
   credits?: number;
-  createdAt: string;
-  lastUpdatedAt?: string;
+  createdAt: string; // ISO string
+  lastUpdatedAt?: string; // ISO string
 }
 
 export interface UserQuestionLog {
-  timestamp: string;
+  timestamp: string; // ISO string
   userId: string;
   userDisplayName: string | null;
   questionContent: string;
 }
 
 export interface FlaggedResponseLog {
-  timestamp: string;
+  timestamp: string; // ISO string
   userId: string;
   userDisplayName: string | null;
   flaggedMessageId: string;
@@ -37,6 +35,20 @@ export interface FlaggedResponseLog {
   subject: string;
   language: string;
   chatHistorySnapshot: Array<{ role: string; content: string }>;
+}
+
+export interface StoredChatMessageAttachment {
+  name: string;
+  type: 'image'; // Extend with other types like 'pdf' if needed in future
+  // storageUrl?: string; // Optional: if uploading to Firebase Storage
+}
+
+export interface StoredChatMessage {
+  id?: string; // Added by loadChatHistory from Firebase key
+  role: 'student' | 'tutor';
+  content: string;
+  timestamp: string; // Server timestamp (ISO string or number for Firebase)
+  attachment?: StoredChatMessageAttachment;
 }
 
 
@@ -68,12 +80,11 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
     }
   } catch (error) {
     console.error("Error fetching existing user profile during saveUserData:", error);
-    // Continue even if fetching existing profile fails, will create new or overwrite with new data.
   }
 
   const now = new Date().toISOString();
-
   let finalCredits: number;
+
   if (typeof additionalData.credits === 'number') {
     finalCredits = additionalData.credits;
   } else if (typeof existingProfile?.credits === 'number') {
@@ -94,19 +105,14 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
     lastUpdatedAt: now,
   };
 
-  // Remove undefined properties before saving
-  const cleanedProfileData = Object.entries(profileData).reduce((acc, [key, value]) => {
-    if (value !== undefined) {
-      acc[key as keyof UserProfile] = value;
-    }
-    return acc;
-  }, {} as Partial<UserProfile>);
-
+  const cleanedProfileData = Object.fromEntries(
+    Object.entries(profileData).filter(([, value]) => value !== undefined)
+  ) as Partial<UserProfile>;
 
   try {
     await set(userProfileRef, cleanedProfileData);
     console.log('User data saved successfully for UID:', user.uid);
-    return cleanedProfileData as UserProfile; // Return the saved data
+    return cleanedProfileData as UserProfile;
   } catch (error) {
     console.error('Error saving user data:', error);
     throw error;
@@ -132,33 +138,27 @@ export async function updateUserCredits(userId: string, newCreditAmount: number)
 
 export async function saveUserQuestion(
   userId: string,
-  displayName: string | null | undefined, // Ensure displayName is passed
+  displayName: string | null | undefined,
   questionContent: string
 ): Promise<void> {
   if (!userId || !questionContent.trim()) {
     console.warn('Attempted to save question with missing userId or empty content.');
     return;
   }
-
   const userQueriesHistoryRef = ref(database, `userQuestionLogs/${userId}/history`);
   const newQuestionRef = push(userQueriesHistoryRef);
-
   const questionLog: UserQuestionLog = {
     timestamp: new Date().toISOString(),
     userId: userId,
-    userDisplayName: displayName || null, // Use the passed display name
+    userDisplayName: displayName || null,
     questionContent: questionContent,
   };
-
   try {
     await set(newQuestionRef, questionLog);
-    console.log(`User question saved for userId: ${userId} with queryId: ${newQuestionRef.key}`);
   } catch (error) {
     console.error(`Error saving user question for userId: ${userId}:`, error);
-    // Optionally re-throw or handle as appropriate for your app's error strategy
   }
 }
-
 
 export async function saveFlaggedResponse(
   userId: string,
@@ -173,10 +173,8 @@ export async function saveFlaggedResponse(
     console.warn('Attempted to save flagged response with missing critical information.');
     return;
   }
-
   const flaggedResponsesRef = ref(database, 'flaggedResponses');
   const newFlagRef = push(flaggedResponsesRef);
-
   const flaggedResponseLog: FlaggedResponseLog = {
     timestamp: new Date().toISOString(),
     userId,
@@ -187,12 +185,69 @@ export async function saveFlaggedResponse(
     language,
     chatHistorySnapshot,
   };
-
   try {
     await set(newFlagRef, flaggedResponseLog);
-    console.log(`Flagged response saved with ID: ${newFlagRef.key} by user: ${userId}`);
   } catch (error) {
     console.error(`Error saving flagged response for user: ${userId}:`, error);
     throw error;
   }
+}
+
+export async function saveChatMessage(
+  userId: string,
+  role: 'student' | 'tutor',
+  content: string,
+  attachment?: StoredChatMessageAttachment
+): Promise<void> {
+  if (!userId) {
+    console.error("Cannot save chat message without userId.");
+    return;
+  }
+  const messagesRef = ref(database, `userChatHistory/${userId}/messages`);
+  const newMessageRef = push(messagesRef);
+  const messageData: Omit<StoredChatMessage, 'id'> = {
+    role,
+    content,
+    timestamp: serverTimestamp() as any, // Use server timestamp for ordering
+    ...(attachment && { attachment }),
+  };
+  try {
+    await set(newMessageRef, messageData);
+  } catch (error) {
+    console.error(`Error saving chat message for user ${userId}:`, error);
+  }
+}
+
+export function loadChatHistory(
+  userId: string,
+  onMessagesLoaded: (messages: StoredChatMessage[]) => void
+): () => void {
+  if (!userId) {
+    console.warn("Cannot load chat history without userId.");
+    onMessagesLoaded([]);
+    return () => {}; // Return a no-op unsubscribe function
+  }
+
+  const messagesRef: DatabaseReference = query(
+    ref(database, `userChatHistory/${userId}/messages`),
+    orderByChild('timestamp') // Order by timestamp
+  );
+
+  const listener = onValue(messagesRef, (snapshot) => {
+    const messages: StoredChatMessage[] = [];
+    if (snapshot.exists()) {
+      snapshot.forEach((childSnapshot) => {
+        messages.push({ id: childSnapshot.key!, ...childSnapshot.val() } as StoredChatMessage);
+      });
+    }
+    onMessagesLoaded(messages);
+  }, (error) => {
+    console.error(`Error loading chat history for user ${userId}:`, error);
+    onMessagesLoaded([]); // Call with empty array on error
+  });
+
+  // Return the unsubscribe function
+  return () => {
+    off(messagesRef, 'value', listener);
+  };
 }
