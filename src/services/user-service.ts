@@ -24,28 +24,15 @@ export interface UserQuestionLog {
   questionContent: string;
 }
 
-// Sanitizes a string to be a valid Firebase key segment
-// Replaces forbidden characters: ., $, #, [, ], /
-// Also handles multiple consecutive underscores and trims leading/trailing ones.
-// This function remains for potential other uses, but won't be used for the main path segment of user questions.
-function sanitizeFirebaseKey(input: string | null | undefined): string {
-  if (!input || input.trim() === "") {
-    return "unknown_or_empty_name";
-  }
-  // Replace forbidden characters with underscore
-  let sanitized = input.replace(/[.$#[\]/]/g, '_');
-  // Replace multiple consecutive underscores with a single one
-  sanitized = sanitized.replace(/_{2,}/g, '_');
-  // Remove leading or trailing underscores
-  sanitized = sanitized.replace(/^_+|_+$/g, '');
-
-  // If, after sanitization, the string is empty (e.g., input was just "."), use a fallback.
-  if (sanitized === "") {
-    return "invalid_name_sanitized";
-  }
-  // Firebase keys cannot be longer than 768 bytes. We won't enforce this here for simplicity,
-  // but it's a good practice for production. Max length for a single path segment is also a concern.
-  return sanitized;
+export interface FlaggedResponseLog {
+  timestamp: string;
+  userId: string;
+  userDisplayName: string | null;
+  flaggedMessageId: string;
+  flaggedMessageContent: string;
+  subject: string;
+  language: string;
+  chatHistorySnapshot: Array<{ role: string; content: string }>;
 }
 
 
@@ -77,7 +64,6 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
     }
   } catch (error) {
     console.error("Error fetching existing user profile during saveUserData:", error);
-    // Continue, assuming no profile exists or let it be overwritten
   }
 
   const now = new Date().toISOString();
@@ -113,7 +99,7 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
 
   try {
     await set(userProfileRef, cleanedProfileData);
-    console.log('User data saved successfully for UID:', user.uid, cleanedProfileData);
+    console.log('User data saved successfully for UID:', user.uid);
     return cleanedProfileData as UserProfile;
   } catch (error) {
     console.error('Error saving user data:', error);
@@ -148,22 +134,59 @@ export async function saveUserQuestion(
     return;
   }
 
-  // Path structure: userQuestionLogs/{userId}/history/{queryId}
-  // The userId is directly used as the path segment.
   const userQueriesHistoryRef = ref(database, `userQuestionLogs/${userId}/history`);
-  const newQuestionRef = push(userQueriesHistoryRef); // Generates a unique ID for the new question
+  const newQuestionRef = push(userQueriesHistoryRef); 
 
   const questionLog: UserQuestionLog = {
     timestamp: new Date().toISOString(),
     userId: userId,
-    userDisplayName: displayName || null, // Store the display name in the log itself
+    userDisplayName: displayName || null, 
     questionContent: questionContent,
   };
 
   try {
     await set(newQuestionRef, questionLog);
-    console.log(`User question saved for userId: ${userId} (name: ${displayName || 'N/A'}) with queryId: ${newQuestionRef.key} under path: userQuestionLogs/${userId}/history`);
+    console.log(`User question saved for userId: ${userId} with queryId: ${newQuestionRef.key}`);
   } catch (error) {
     console.error(`Error saving user question for userId: ${userId}:`, error);
   }
 }
+
+
+export async function saveFlaggedResponse(
+  userId: string,
+  userDisplayName: string | null,
+  flaggedMessageId: string,
+  flaggedMessageContent: string,
+  subject: string,
+  language: string,
+  chatHistorySnapshot: Array<{ role: string; content: string }>
+): Promise<void> {
+  if (!userId || !flaggedMessageId || !flaggedMessageContent) {
+    console.warn('Attempted to save flagged response with missing critical information.');
+    return;
+  }
+
+  const flaggedResponsesRef = ref(database, 'flaggedResponses');
+  const newFlagRef = push(flaggedResponsesRef); // Generates a unique ID for the flag
+
+  const flaggedResponseLog: FlaggedResponseLog = {
+    timestamp: new Date().toISOString(),
+    userId,
+    userDisplayName,
+    flaggedMessageId,
+    flaggedMessageContent,
+    subject,
+    language,
+    chatHistorySnapshot,
+  };
+
+  try {
+    await set(newFlagRef, flaggedResponseLog);
+    console.log(`Flagged response saved with ID: ${newFlagRef.key} by user: ${userId}`);
+  } catch (error) {
+    console.error(`Error saving flagged response for user: ${userId}:`, error);
+    throw error;
+  }
+}
+

@@ -6,14 +6,16 @@ import { useSettings } from '@/hooks/use-settings';
 import { useAuth } from '@/hooks/use-auth';
 import { aiTutor } from '@/ai/flows/ai-tutor';
 import type { AiTutorInput, AiTutorOutput } from '@/ai/flows/ai-tutor';
-import { saveUserQuestion } from '@/services/user-service';
+import { saveUserQuestion, saveFlaggedResponse } from '@/services/user-service'; // Added saveFlaggedResponse
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
-import { Send, User, Bot, Loader2 } from 'lucide-react';
+import { Send, User, Bot, Loader2, Flag } from 'lucide-react'; // Added Flag
 import { useToast } from "@/hooks/use-toast";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+
 
 type Message = {
   id: string;
@@ -23,7 +25,6 @@ type Message = {
 
 const formatBoldText = (text: string) => {
   const boldPattern = /\*\*(.*?)\*\*/g;
-  // Escape HTML characters to prevent XSS if the AI includes them.
   const escapeHtml = (unsafeText: string) => {
     return unsafeText
          .replace(/&/g, "&amp;")
@@ -32,8 +33,6 @@ const formatBoldText = (text: string) => {
          .replace(/"/g, "&quot;")
          .replace(/'/g, "&#039;");
   };
-  // Apply bolding to the (potentially pre-escaped) text.
-  // The $1 in replace captures the content *between* the asterisks.
   const html = escapeHtml(text).replace(boldPattern, '<strong>$1</strong>');
   return { __html: html };
 };
@@ -118,30 +117,31 @@ export default function ChatInterface() {
     };
     setMessages((prevMessages) => [...prevMessages, newMessage]);
     
-    // Save the user's question
     try {
       const userDisplayName = userProfile?.displayName || user.displayName || null;
       await saveUserQuestion(user.uid, userDisplayName, newMessage.content);
     } catch (error) {
       console.error("Failed to save user question:", error);
-      // Optionally, inform the user or just log, depending on desired UX
     }
 
     setCurrentMessage('');
     setIsLoading(true);
 
     try {
-      const chatHistory = messages.map(msg => ({ role: msg.role, content: msg.content }));
+      const chatHistoryForAI = messages.map(msg => ({ role: msg.role, content: msg.content }));
+      // Add the new student message to the history for the AI
+      chatHistoryForAI.push({ role: newMessage.role, content: newMessage.content });
+
       const input: AiTutorInput = {
         subject,
         language,
-        studentMessage: newMessage.content,
-        chatHistory, 
+        studentMessage: newMessage.content, // studentMessage is still the current one
+        chatHistory: chatHistoryForAI.slice(0, -1), // Pass history *before* current student message
       };
       const result: AiTutorOutput = await aiTutor(input);
 
       const creditDeducted = await deductCreditForAITutor();
-      if (!creditDeducted && result.tutorResponse) { // Only toast if AI response was successful but credit deduction failed
+      if (!creditDeducted && result.tutorResponse) { 
         toast({
             variant: "destructive",
             title: "Credit Deduction Failed",
@@ -173,6 +173,32 @@ export default function ChatInterface() {
       setIsLoading(false);
     }
   };
+
+  const handleFlagMessage = async (messageId: string, messageContent: string) => {
+    if (!user) {
+      toast({ variant: "destructive", title: "Error", description: "You must be logged in to flag a response." });
+      return;
+    }
+    try {
+      const userDisplayName = userProfile?.displayName || user.displayName || null;
+      const chatHistorySnapshot = messages.slice(0, messages.findIndex(m => m.id === messageId) + 1)
+                                      .map(m => ({ role: m.role, content: m.content }));
+
+      await saveFlaggedResponse(
+        user.uid,
+        userDisplayName,
+        messageId,
+        messageContent,
+        subject,
+        language,
+        chatHistorySnapshot
+      );
+      toast({ title: "Response Flagged", description: "Thank you for your feedback! Our team will review this." });
+    } catch (error) {
+      console.error("Failed to flag response:", error);
+      toast({ variant: "destructive", title: "Flagging Failed", description: "Could not submit your feedback. Please try again." });
+    }
+  };
   
   let placeholderText = "Ask a question or request an explanation...";
   if (profileLoading) {
@@ -186,6 +212,7 @@ export default function ChatInterface() {
     <Card className="w-full shadow-xl flex flex-col flex-grow">
       <CardContent className="p-0 flex-grow flex flex-col">
         <ScrollArea className="flex-grow w-full p-4" ref={scrollAreaRef}> 
+        <TooltipProvider>
           {messages.map((msg) => (
             <div
               key={msg.id}
@@ -215,8 +242,27 @@ export default function ChatInterface() {
                    <AvatarFallback><User size={18}/></AvatarFallback>
                  </Avatar>
               )}
+              {msg.role === 'tutor' && msg.id !== 'initial_tutor_greeting' && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="ml-1 h-7 w-7 p-1 opacity-50 hover:opacity-100"
+                      onClick={() => handleFlagMessage(msg.id, msg.content)}
+                    >
+                      <Flag className="h-4 w-4" />
+                      <span className="sr-only">Flag this response</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Flag this response as incorrect</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
             </div>
           ))}
+          </TooltipProvider>
           {isLoading && (
             <div className="flex items-start gap-3 mb-4 justify-start">
               <Avatar className="h-8 w-8">
