@@ -20,8 +20,33 @@ export interface UserProfile {
 export interface UserQuestionLog {
   timestamp: string;
   userId: string;
+  userDisplayName: string | null;
   questionContent: string;
 }
+
+// Sanitizes a string to be a valid Firebase key segment
+// Replaces forbidden characters: ., $, #, [, ], /
+// Also handles multiple consecutive underscores and trims leading/trailing ones.
+function sanitizeFirebaseKey(input: string | null | undefined): string {
+  if (!input || input.trim() === "") {
+    return "unknown_or_empty_name";
+  }
+  // Replace forbidden characters with underscore
+  let sanitized = input.replace(/[.$#[\]/]/g, '_');
+  // Replace multiple consecutive underscores with a single one
+  sanitized = sanitized.replace(/_{2,}/g, '_');
+  // Remove leading or trailing underscores
+  sanitized = sanitized.replace(/^_+|_+$/g, '');
+
+  // If, after sanitization, the string is empty (e.g., input was just "."), use a fallback.
+  if (sanitized === "") {
+    return "invalid_name_sanitized";
+  }
+  // Firebase keys cannot be longer than 768 bytes. We won't enforce this here for simplicity,
+  // but it's a good practice for production. Max length for a single path segment is also a concern.
+  return sanitized;
+}
+
 
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
   if (!userId) return null;
@@ -56,10 +81,6 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
 
   const now = new Date().toISOString();
 
-  // Determine credits:
-  // 1. If additionalData.credits is provided (e.g., from direct signup), use that.
-  // 2. Else, if existingProfile.credits exists, use that.
-  // 3. Else (new user via Google, or existing user somehow without credits), assign default.
   let finalCredits: number;
   if (typeof additionalData.credits === 'number') {
     finalCredits = additionalData.credits;
@@ -81,7 +102,6 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
     lastUpdatedAt: now,
   };
 
-  // Filter out undefined fields before saving, except for those that can be explicitly null (like photoURL, displayName)
   const cleanedProfileData = Object.entries(profileData).reduce((acc, [key, value]) => {
     if (value !== undefined) {
       acc[key as keyof UserProfile] = value;
@@ -93,10 +113,10 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
   try {
     await set(userProfileRef, cleanedProfileData);
     console.log('User data saved successfully for UID:', user.uid, cleanedProfileData);
-    return cleanedProfileData as UserProfile; // Return the saved profile
+    return cleanedProfileData as UserProfile;
   } catch (error) {
     console.error('Error saving user data:', error);
-    throw error; // Re-throw to handle in UI
+    throw error;
   }
 }
 
@@ -117,26 +137,38 @@ export async function updateUserCredits(userId: string, newCreditAmount: number)
   }
 }
 
-export async function saveUserQuestion(userId: string, questionContent: string): Promise<void> {
+export async function saveUserQuestion(
+  userId: string,
+  displayName: string | null | undefined,
+  questionContent: string
+): Promise<void> {
   if (!userId || !questionContent.trim()) {
     console.warn('Attempted to save question with missing userId or empty content.');
     return;
   }
 
-  const userQueriesHistoryRef = ref(database, `userQueries/${userId}/history`);
+  let namePathSegment: string;
+  if (displayName && displayName.trim() !== "") {
+    namePathSegment = sanitizeFirebaseKey(displayName);
+  } else {
+    namePathSegment = "users_without_name"; // Default segment for users without a display name
+  }
+
+  // Path structure: userQuestionLogs/{sanitizedDisplayNameOrDefault}/{userId}/history/{queryId}
+  const userQueriesHistoryRef = ref(database, `userQuestionLogs/${namePathSegment}/${userId}/history`);
   const newQuestionRef = push(userQueriesHistoryRef); // Generates a unique ID for the new question
 
   const questionLog: UserQuestionLog = {
     timestamp: new Date().toISOString(),
     userId: userId,
+    userDisplayName: displayName || null,
     questionContent: questionContent,
   };
 
   try {
     await set(newQuestionRef, questionLog);
-    console.log(`User question saved for userId: ${userId} with queryId: ${newQuestionRef.key}`);
+    console.log(`User question saved for userId: ${userId} (name: ${displayName || 'N/A'}) with queryId: ${newQuestionRef.key} under path segment: ${namePathSegment}`);
   } catch (error) {
     console.error(`Error saving user question for userId: ${userId}:`, error);
-    // Optionally re-throw or handle as needed for your application's error strategy
   }
 }

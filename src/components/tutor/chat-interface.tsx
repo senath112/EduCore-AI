@@ -6,7 +6,7 @@ import { useSettings } from '@/hooks/use-settings';
 import { useAuth } from '@/hooks/use-auth';
 import { aiTutor } from '@/ai/flows/ai-tutor';
 import type { AiTutorInput, AiTutorOutput } from '@/ai/flows/ai-tutor';
-import { saveUserQuestion } from '@/services/user-service'; // Import the new service
+import { saveUserQuestion } from '@/services/user-service';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -23,8 +23,7 @@ type Message = {
 
 const formatBoldText = (text: string) => {
   const boldPattern = /\*\*(.*?)\*\*/g;
-  // Escape HTML characters within the bolded text to prevent XSS, then apply bolding.
-  // First, escape potential HTML in the original text.
+  // Escape HTML characters to prevent XSS if the AI includes them.
   const escapeHtml = (unsafeText: string) => {
     return unsafeText
          .replace(/&/g, "&amp;")
@@ -32,11 +31,9 @@ const formatBoldText = (text: string) => {
          .replace(/>/g, "&gt;")
          .replace(/"/g, "&quot;")
          .replace(/'/g, "&#039;");
-  }
-  // Apply bolding to the escaped text.
+  };
+  // Apply bolding to the (potentially pre-escaped) text.
   // The $1 in replace captures the content *between* the asterisks.
-  // We are not escaping $1 itself as it's the content we want to bold.
-  // The assumption is the AI provides clean text for bolding.
   const html = escapeHtml(text).replace(boldPattern, '<strong>$1</strong>');
   return { __html: html };
 };
@@ -44,7 +41,7 @@ const formatBoldText = (text: string) => {
 
 export default function ChatInterface() {
   const { subject, language } = useSettings();
-  const { user, userProfile, deductCreditForAITutor, profileLoading } = useAuth(); // Get user object
+  const { user, userProfile, deductCreditForAITutor, profileLoading } = useAuth();
   const { toast } = useToast();
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentMessage, setCurrentMessage] = useState('');
@@ -79,7 +76,7 @@ export default function ChatInterface() {
   const handleSendMessage = async () => {
     if (!canSendMessage) return;
 
-    if (!user) { // Ensure user is available
+    if (!user) {
       toast({
         variant: "destructive",
         title: "Error",
@@ -123,7 +120,8 @@ export default function ChatInterface() {
     
     // Save the user's question
     try {
-      await saveUserQuestion(user.uid, newMessage.content);
+      const userDisplayName = userProfile?.displayName || user.displayName || null;
+      await saveUserQuestion(user.uid, userDisplayName, newMessage.content);
     } catch (error) {
       console.error("Failed to save user question:", error);
       // Optionally, inform the user or just log, depending on desired UX
@@ -142,9 +140,8 @@ export default function ChatInterface() {
       };
       const result: AiTutorOutput = await aiTutor(input);
 
-      // Deduct credit AFTER successful AI response
       const creditDeducted = await deductCreditForAITutor();
-      if (!creditDeducted) {
+      if (!creditDeducted && result.tutorResponse) { // Only toast if AI response was successful but credit deduction failed
         toast({
             variant: "destructive",
             title: "Credit Deduction Failed",
@@ -159,12 +156,12 @@ export default function ChatInterface() {
       };
       setMessages((prevMessages) => [...prevMessages, tutorResponse]);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error with AI Tutor:", error);
       toast({
         variant: "destructive",
-        title: "Error",
-        description: "Failed to get response from AI Tutor. Please try again.",
+        title: "AI Tutor Error",
+        description: error.message || "Failed to get response from AI Tutor. Please try again.",
       });
       const errorResponse: Message = {
         id: Date.now().toString() + '_error',
@@ -188,7 +185,7 @@ export default function ChatInterface() {
   return (
     <Card className="w-full shadow-xl flex flex-col flex-grow">
       <CardContent className="p-0 flex-grow flex flex-col">
-        <ScrollArea className="flex-grow w-full p-4 border-b" ref={scrollAreaRef}> 
+        <ScrollArea className="flex-grow w-full p-4" ref={scrollAreaRef}> 
           {messages.map((msg) => (
             <div
               key={msg.id}
@@ -232,7 +229,7 @@ export default function ChatInterface() {
           )}
         </ScrollArea>
       </CardContent>
-      <CardFooter className="p-4">
+      <CardFooter className="p-4 border-t">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -256,3 +253,4 @@ export default function ChatInterface() {
     </Card>
   );
 }
+
