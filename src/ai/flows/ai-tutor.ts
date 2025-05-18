@@ -74,7 +74,22 @@ const aiTutorFlow = ai.defineFlow(
     outputSchema: AiTutorOutputSchema,
   },
   async input => {
-    const {output} = await prompt(input);
-    return output!;
+    const response = await prompt(input);
+    if (!response.output) {
+      let failureReason = "AI prompt failed to generate a valid response.";
+      if (response.candidates && response.candidates.length > 0) {
+        const candidate = response.candidates[0];
+        if (candidate.finishReason) {
+          failureReason += ` Finish Reason: ${candidate.finishReason}.`;
+          if (candidate.finishMessage) {
+            failureReason += ` Message: ${candidate.finishMessage}.`;
+          }
+        }
+      }
+      console.error(failureReason, 'Full AI response:', response);
+      throw new Error(failureReason);
+    }
+    return response.output;
   }
 );
+
