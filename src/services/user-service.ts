@@ -27,6 +27,7 @@ export interface UserQuestionLog {
 // Sanitizes a string to be a valid Firebase key segment
 // Replaces forbidden characters: ., $, #, [, ], /
 // Also handles multiple consecutive underscores and trims leading/trailing ones.
+// This function remains for potential other uses, but won't be used for the main path segment of user questions.
 function sanitizeFirebaseKey(input: string | null | undefined): string {
   if (!input || input.trim() === "") {
     return "unknown_or_empty_name";
@@ -147,27 +148,21 @@ export async function saveUserQuestion(
     return;
   }
 
-  let namePathSegment: string;
-  if (displayName && displayName.trim() !== "") {
-    namePathSegment = sanitizeFirebaseKey(displayName);
-  } else {
-    namePathSegment = "users_without_name"; // Default segment for users without a display name
-  }
-
-  // Path structure: userQuestionLogs/{sanitizedDisplayNameOrDefault}/{userId}/history/{queryId}
-  const userQueriesHistoryRef = ref(database, `userQuestionLogs/${namePathSegment}/${userId}/history`);
+  // Path structure: userQuestionLogs/{userId}/history/{queryId}
+  // The userId is directly used as the path segment.
+  const userQueriesHistoryRef = ref(database, `userQuestionLogs/${userId}/history`);
   const newQuestionRef = push(userQueriesHistoryRef); // Generates a unique ID for the new question
 
   const questionLog: UserQuestionLog = {
     timestamp: new Date().toISOString(),
     userId: userId,
-    userDisplayName: displayName || null,
+    userDisplayName: displayName || null, // Store the display name in the log itself
     questionContent: questionContent,
   };
 
   try {
     await set(newQuestionRef, questionLog);
-    console.log(`User question saved for userId: ${userId} (name: ${displayName || 'N/A'}) with queryId: ${newQuestionRef.key} under path segment: ${namePathSegment}`);
+    console.log(`User question saved for userId: ${userId} (name: ${displayName || 'N/A'}) with queryId: ${newQuestionRef.key} under path: userQuestionLogs/${userId}/history`);
   } catch (error) {
     console.error(`Error saving user question for userId: ${userId}:`, error);
   }
