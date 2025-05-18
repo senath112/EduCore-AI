@@ -17,6 +17,7 @@ export interface UserProfile {
   credits?: number;
   createdAt: string; // ISO string
   lastUpdatedAt?: string; // ISO string
+  isAdmin?: boolean; // Added admin flag
 }
 
 export interface UserQuestionLog {
@@ -80,6 +81,7 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
     }
   } catch (error) {
     console.error("Error fetching existing user profile during saveUserData:", error);
+    // Continue, as profile might not exist yet
   }
 
   const now = new Date().toISOString();
@@ -87,37 +89,45 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
 
   if (typeof additionalData.credits === 'number') {
     finalCredits = additionalData.credits;
-  } else if (typeof existingProfile?.credits === 'number') {
+  } else if (existingProfile && typeof existingProfile.credits === 'number') {
     finalCredits = existingProfile.credits;
   } else {
     finalCredits = DEFAULT_INITIAL_CREDITS;
   }
 
+  // Construct the profile, ensuring isAdmin is handled carefully.
+  // User-facing forms (Signup, CompleteProfile, EditProfile) do not pass `isAdmin` in `additionalData`.
+  // `isAdmin` defaults to false for new users and is preserved for existing users.
+  // It can only be changed to true by a trusted process (e.g. manual DB edit or future admin tool passing it in additionalData).
   const profileData: UserProfile = {
     email: user.email,
-    displayName: additionalData.displayName || existingProfile?.displayName || user.displayName || user.email?.split('@')[0],
-    photoURL: additionalData.photoURL || existingProfile?.photoURL || user.photoURL,
+    displayName: additionalData.displayName ?? existingProfile?.displayName ?? user.displayName ?? user.email?.split('@')[0],
+    photoURL: additionalData.photoURL ?? existingProfile?.photoURL ?? user.photoURL,
     age: additionalData.age ?? existingProfile?.age,
     alFacingYear: additionalData.alFacingYear ?? existingProfile?.alFacingYear,
     phoneNumber: additionalData.phoneNumber ?? existingProfile?.phoneNumber,
     credits: finalCredits,
     createdAt: existingProfile?.createdAt || now,
     lastUpdatedAt: now,
+    isAdmin: typeof additionalData.isAdmin === 'boolean' ? additionalData.isAdmin : (existingProfile?.isAdmin || false),
   };
 
+  // Remove undefined values before saving
   const cleanedProfileData = Object.fromEntries(
     Object.entries(profileData).filter(([, value]) => value !== undefined)
   ) as Partial<UserProfile>;
 
+
   try {
     await set(userProfileRef, cleanedProfileData);
-    console.log('User data saved successfully for UID:', user.uid);
-    return cleanedProfileData as UserProfile;
+    console.log('User data saved successfully for UID:', user.uid, 'Admin status:', cleanedProfileData.isAdmin);
+    return cleanedProfileData as UserProfile; // Return the saved data
   } catch (error) {
     console.error('Error saving user data:', error);
     throw error;
   }
 }
+
 
 export async function updateUserCredits(userId: string, newCreditAmount: number): Promise<void> {
   if (!userId) throw new Error("User ID is required to update credits.");
@@ -145,12 +155,13 @@ export async function saveUserQuestion(
     console.warn('Attempted to save question with missing userId or empty content.');
     return;
   }
+  // Path uses userId directly for robustness
   const userQueriesHistoryRef = ref(database, `userQuestionLogs/${userId}/history`);
   const newQuestionRef = push(userQueriesHistoryRef);
   const questionLog: UserQuestionLog = {
     timestamp: new Date().toISOString(),
     userId: userId,
-    userDisplayName: displayName || null,
+    userDisplayName: displayName || null, // Store display name for context
     questionContent: questionContent,
   };
   try {
@@ -218,36 +229,36 @@ export async function saveChatMessage(
   }
 }
 
-export function loadChatHistory(
-  userId: string,
-  onMessagesLoaded: (messages: StoredChatMessage[]) => void
-): () => void {
-  if (!userId) {
-    console.warn("Cannot load chat history without userId.");
-    onMessagesLoaded([]);
-    return () => {}; // Return a no-op unsubscribe function
-  }
+// Chat history is not loaded in this version of chat-interface.
+// export function loadChatHistory(
+//   userId: string,
+//   onMessagesLoaded: (messages: StoredChatMessage[]) => void
+// ): () => void {
+//   if (!userId) {
+//     console.warn("Cannot load chat history without userId.");
+//     onMessagesLoaded([]);
+//     return () => {}; 
+//   }
 
-  const messagesRef: DatabaseReference = query(
-    ref(database, `userChatHistory/${userId}/messages`),
-    orderByChild('timestamp') // Order by timestamp
-  );
+//   const messagesRef: DatabaseReference = query(
+//     ref(database, `userChatHistory/${userId}/messages`),
+//     orderByChild('timestamp') 
+//   );
 
-  const listener = onValue(messagesRef, (snapshot) => {
-    const messages: StoredChatMessage[] = [];
-    if (snapshot.exists()) {
-      snapshot.forEach((childSnapshot) => {
-        messages.push({ id: childSnapshot.key!, ...childSnapshot.val() } as StoredChatMessage);
-      });
-    }
-    onMessagesLoaded(messages);
-  }, (error) => {
-    console.error(`Error loading chat history for user ${userId}:`, error);
-    onMessagesLoaded([]); // Call with empty array on error
-  });
+//   const listener = onValue(messagesRef, (snapshot) => {
+//     const messages: StoredChatMessage[] = [];
+//     if (snapshot.exists()) {
+//       snapshot.forEach((childSnapshot) => {
+//         messages.push({ id: childSnapshot.key!, ...childSnapshot.val() } as StoredChatMessage);
+//       });
+//     }
+//     onMessagesLoaded(messages);
+//   }, (error) => {
+//     console.error(`Error loading chat history for user ${userId}:`, error);
+//     onMessagesLoaded([]); 
+//   });
 
-  // Return the unsubscribe function
-  return () => {
-    off(messagesRef, 'value', listener);
-  };
-}
+//   return () => {
+//     off(messagesRef, 'value', listener);
+//   };
+// }

@@ -3,16 +3,16 @@
 
 import type { ReactNode } from 'react';
 import { createContext, useState, useEffect, useCallback } from 'react';
-import type { User, Auth } from 'firebase/auth'; // Added Auth type
-import { getAuth, onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth'; // Added getAuth
-import { app } from '@/lib/firebase'; // Import app
+import type { User, Auth } from 'firebase/auth';
+import { getAuth, onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
+import { app } from '@/lib/firebase';
 import { getUserProfile, updateUserCredits, type UserProfile, saveUserData } from '@/services/user-service';
 import { Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 
 type AuthContextType = {
   user: User | null;
-  authInstance: Auth; // Firebase Auth instance
+  authInstance: Auth;
   userProfile: UserProfile | null;
   loading: boolean; // Overall auth loading
   profileLoading: boolean; // Specific to profile fetching
@@ -24,7 +24,6 @@ type AuthContextType = {
   setPromptForUserDetails: (value: boolean) => void;
 };
 
-// Initialize authInstance directly here as app is already initialized
 const authInstance: Auth = getAuth(app);
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -43,6 +42,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const profile = await getUserProfile(currentUser.uid);
         setUserProfile(profile);
+        console.log("Fetched profile in AuthContext:", profile);
+
 
         if (profile) {
           const isGoogleUser = currentUser.providerData.some(p => p.providerId === 'google.com');
@@ -53,11 +54,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setPromptForUserDetails(false);
           }
         } else {
+          // If profile is null (e.g., first-time Google Sign-In user before saveUserData completes fully or if DB read fails)
+          // For Google users, saveUserData is called in login/signup forms.
+          // If it's null here, it might be a race condition or an error.
+          // The CompleteProfileDialog logic will primarily rely on this `promptForUserDetails`.
           const isGoogleUser = currentUser.providerData.some(p => p.providerId === 'google.com');
-          if (isGoogleUser) {
-             // Handled by CompleteProfileDialog logic if profile is null after initial saveUserData
-          }
-           setPromptForUserDetails(false);
+           if (isGoogleUser) {
+             // This scenario is tricky. If saveUserData in form hasn't created a profile yet,
+             // `getUserProfile` returns null. The dialog might be needed.
+             // Let's assume saveUserData during login handles initial profile for Google users.
+             // If a Google user has no profile and is NOT missing details (because there are no details),
+             // we should still prompt.
+             // The key is if profile itself is null, and it's a Google user, they might need to complete it.
+             // This logic can be refined. For now, if profile is null and it's a Google user,
+             // we can assume they need to complete it.
+             setPromptForUserDetails(true);
+           } else {
+            setPromptForUserDetails(false);
+           }
         }
 
       } catch (error) {
@@ -79,8 +93,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsubscribe = onAuthStateChanged(authInstance, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
+        // For a new user signing up with Google, saveUserData might not have completed yet
+        // from the signup form when onAuthStateChanged first fires.
+        // Fetching profile here ensures we get the latest.
         await fetchUserProfile(currentUser);
       } else {
+        // User logged out
         setUserProfile(null);
         setPromptForUserDetails(false);
         setProfileLoading(false);
@@ -88,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [fetchUserProfile]); // authInstance is stable, not needed in deps
+  }, [fetchUserProfile]);
 
   const logout = async () => {
     try {
@@ -96,8 +114,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setUserProfile(null);
       setPromptForUserDetails(false);
+      // router.push('/login'); // Handled by page components
     } catch (error) {
       console.error("Error signing out: ", error);
+      toast({ variant: "destructive", title: "Logout Failed", description: "Could not sign you out." });
     }
   };
 
@@ -113,7 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const newCreditAmount = userProfile.credits - 1;
     try {
       await updateUserCredits(user.uid, newCreditAmount);
-      setUserProfile(prevProfile => prevProfile ? { ...prevProfile, credits: newCreditAmount } : null);
+      setUserProfile(prevProfile => prevProfile ? { ...prevProfile, credits: newCreditAmount, lastUpdatedAt: new Date().toISOString() } : null);
       return true;
     } catch (error) {
       console.error("Failed to deduct credit:", error);
@@ -128,7 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, fetchUserProfile]);
 
   const handleAddCredits = async (amount: number): Promise<boolean> => {
-    if (!user || userProfile === null || typeof userProfile.credits !== 'number') {
+    if (!user || userProfile === null) { // Simpler check, credits can be 0
       toast({
         variant: "destructive",
         title: "Error",
@@ -145,10 +165,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return false;
     }
 
-    const newCreditAmount = (userProfile.credits || 0) + amount;
+    const currentCredits = typeof userProfile.credits === 'number' ? userProfile.credits : 0;
+    const newCreditAmount = currentCredits + amount;
     try {
       await updateUserCredits(user.uid, newCreditAmount);
-      setUserProfile(prevProfile => prevProfile ? { ...prevProfile, credits: newCreditAmount } : null);
+      setUserProfile(prevProfile => prevProfile ? { ...prevProfile, credits: newCreditAmount, lastUpdatedAt: new Date().toISOString() } : null);
       toast({
         title: "Credits Added",
         description: `${amount} credits have been successfully added to your account.`,
@@ -176,7 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={{
       user,
-      authInstance, // Provide authInstance
+      authInstance,
       userProfile,
       loading,
       profileLoading,

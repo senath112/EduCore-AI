@@ -2,12 +2,11 @@
 "use client";
 
 import Link from 'next/link';
-import { useState } from 'react'; // Added useState
+import { useState } from 'react';
 import LogoIcon from '@/components/icons/logo-icon';
 import LanguageSelector from '@/components/shared/language-selector';
 import SubjectSelector from '@/components/shared/subject-selector';
-import ThemeToggleButton from '@/components/shared/theme-toggle-button'; // Will be replaced by SettingsDialog
-import SettingsDialog from '@/components/settings/settings-dialog'; // Added SettingsDialog
+import SettingsDialog from '@/components/settings/settings-dialog';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,19 +19,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { User as UserIcon, LogOut, LogIn, CircleDollarSign, PlusCircle, Settings, CalendarDays, Phone, UserRound, Sun, Moon } from 'lucide-react'; 
+import { User as UserIcon, LogOut, LogIn, CircleDollarSign, PlusCircle, Settings, CalendarDays, Phone, UserRound, Sun, Moon, ShieldCheck } from 'lucide-react'; 
 import { useSettings } from '@/hooks/use-settings';
+import { useRouter } from 'next/navigation';
 
 
 export default function Header() {
   const { user, userProfile, logout, loading: authLoading, profileLoading, handleAddCredits } = useAuth();
-  const { theme, setTheme } = useSettings(); // For theme toggle button in header (can be removed if only in dialog)
+  const { theme, setTheme } = useSettings();
+  const router = useRouter();
   const isLoading = authLoading || profileLoading;
   const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(false);
 
 
   const onAddCreditsClick = async () => {
-    await handleAddCredits(10); // Add 10 credits
+    await handleAddCredits(10);
   };
 
   const toggleTheme = () => {
@@ -54,7 +55,6 @@ export default function Header() {
               <LanguageSelector />
             </>
           )}
-           {/* Theme toggle button directly in header - can be kept or removed if only in dialog */}
            <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
             {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </Button>
@@ -79,7 +79,7 @@ export default function Header() {
                     </Avatar>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56 sm:w-64" align="end" forceMount>
+                <DropdownMenuContent className="w-60 sm:w-64" align="end" forceMount>
                   <DropdownMenuLabel className="font-normal">
                     <div className="flex flex-col space-y-1.5 py-1">
                       <p className="text-sm font-medium leading-none">
@@ -109,6 +109,15 @@ export default function Header() {
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
+                  {userProfile?.isAdmin && (
+                    <>
+                      <DropdownMenuItem onClick={() => router.push('/admin')}>
+                        <ShieldCheck className="mr-2 h-4 w-4" />
+                        <span>Admin Dashboard</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
                   <DropdownMenuItem onClick={onAddCreditsClick}>
                     <PlusCircle className="mr-2 h-4 w-4" />
                     <span>Add 10 Credits</span>
