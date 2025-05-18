@@ -21,6 +21,27 @@ type Message = {
   content: string;
 };
 
+const formatBoldText = (text: string) => {
+  const boldPattern = /\*\*(.*?)\*\*/g;
+  // Escape HTML characters within the bolded text to prevent XSS, then apply bolding.
+  // First, escape potential HTML in the original text.
+  const escapeHtml = (unsafeText: string) => {
+    return unsafeText
+         .replace(/&/g, "&amp;")
+         .replace(/</g, "&lt;")
+         .replace(/>/g, "&gt;")
+         .replace(/"/g, "&quot;")
+         .replace(/'/g, "&#039;");
+  }
+  // Apply bolding to the escaped text.
+  // The $1 in replace captures the content *between* the asterisks.
+  // We are not escaping $1 itself as it's the content we want to bold.
+  // The assumption is the AI provides clean text for bolding.
+  const html = escapeHtml(text).replace(boldPattern, '<strong>$1</strong>');
+  return { __html: html };
+};
+
+
 export default function ChatInterface() {
   const { subject, language } = useSettings();
   const { user, userProfile, deductCreditForAITutor, profileLoading } = useAuth(); // Get user object
@@ -187,7 +208,10 @@ export default function ChatInterface() {
                     : 'bg-card text-card-foreground border'
                 }`}
               >
-                <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                <p
+                  className="text-sm whitespace-pre-wrap"
+                  dangerouslySetInnerHTML={formatBoldText(msg.content)}
+                />
               </div>
               {msg.role === 'student' && (
                  <Avatar className="h-8 w-8">
