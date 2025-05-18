@@ -6,12 +6,13 @@ import { useSettings } from '@/hooks/use-settings';
 import { useAuth } from '@/hooks/use-auth';
 import { aiTutor } from '@/ai/flows/ai-tutor';
 import type { AiTutorInput, AiTutorOutput } from '@/ai/flows/ai-tutor';
+import { saveUserQuestion } from '@/services/user-service'; // Import the new service
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Card, CardContent, CardFooter } from '@/components/ui/card'; 
-import { Send, User, Bot, Loader2 } from 'lucide-react'; 
+import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import { Send, User, Bot, Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 
 type Message = {
@@ -22,7 +23,7 @@ type Message = {
 
 export default function ChatInterface() {
   const { subject, language } = useSettings();
-  const { userProfile, deductCreditForAITutor, profileLoading } = useAuth();
+  const { user, userProfile, deductCreditForAITutor, profileLoading } = useAuth(); // Get user object
   const { toast } = useToast();
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentMessage, setCurrentMessage] = useState('');
@@ -57,6 +58,15 @@ export default function ChatInterface() {
   const handleSendMessage = async () => {
     if (!canSendMessage) return;
 
+    if (!user) { // Ensure user is available
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "You must be logged in to ask a question.",
+      });
+      return;
+    }
+
     if (profileLoading) {
       toast({
         title: "Loading profile...",
@@ -89,6 +99,15 @@ export default function ChatInterface() {
       content: currentMessage,
     };
     setMessages((prevMessages) => [...prevMessages, newMessage]);
+    
+    // Save the user's question
+    try {
+      await saveUserQuestion(user.uid, newMessage.content);
+    } catch (error) {
+      console.error("Failed to save user question:", error);
+      // Optionally, inform the user or just log, depending on desired UX
+    }
+
     setCurrentMessage('');
     setIsLoading(true);
 
@@ -105,8 +124,6 @@ export default function ChatInterface() {
       // Deduct credit AFTER successful AI response
       const creditDeducted = await deductCreditForAITutor();
       if (!creditDeducted) {
-        // This case should ideally be rare if initial checks pass,
-        // but good to handle (e.g., Firebase update failed)
         toast({
             variant: "destructive",
             title: "Credit Deduction Failed",

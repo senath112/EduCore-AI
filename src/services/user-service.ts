@@ -1,5 +1,5 @@
 
-import { ref, set, get, child } from 'firebase/database';
+import { ref, set, get, child, push } from 'firebase/database';
 import { database } from '@/lib/firebase';
 import type { User } from 'firebase/auth';
 
@@ -15,6 +15,12 @@ export interface UserProfile {
   credits?: number;
   createdAt: string;
   lastUpdatedAt?: string;
+}
+
+export interface UserQuestionLog {
+  timestamp: string;
+  userId: string;
+  questionContent: string;
 }
 
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
@@ -108,5 +114,29 @@ export async function updateUserCredits(userId: string, newCreditAmount: number)
   } catch (error) {
     console.error(`Error updating credits for user ${userId}:`, error);
     throw error;
+  }
+}
+
+export async function saveUserQuestion(userId: string, questionContent: string): Promise<void> {
+  if (!userId || !questionContent.trim()) {
+    console.warn('Attempted to save question with missing userId or empty content.');
+    return;
+  }
+
+  const userQueriesHistoryRef = ref(database, `userQueries/${userId}/history`);
+  const newQuestionRef = push(userQueriesHistoryRef); // Generates a unique ID for the new question
+
+  const questionLog: UserQuestionLog = {
+    timestamp: new Date().toISOString(),
+    userId: userId,
+    questionContent: questionContent,
+  };
+
+  try {
+    await set(newQuestionRef, questionLog);
+    console.log(`User question saved for userId: ${userId} with queryId: ${newQuestionRef.key}`);
+  } catch (error) {
+    console.error(`Error saving user question for userId: ${userId}:`, error);
+    // Optionally re-throw or handle as needed for your application's error strategy
   }
 }
