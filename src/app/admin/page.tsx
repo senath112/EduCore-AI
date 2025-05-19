@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { getFlaggedResponses, type FlaggedResponseLogWithId, getAllUserProfiles, type UserProfileWithId, adminSetUserAccountDisabledStatus } from '@/services/user-service';
 import EditUserDialog from '@/components/admin/edit-user-dialog';
-import ViewFlaggedResponseDialog from '@/components/admin/view-flagged-response-dialog'; // New import
+import ViewFlaggedResponseDialog from '@/components/admin/view-flagged-response-dialog';
 import {
   Table,
   TableBody,
@@ -37,8 +37,8 @@ export default function AdminDashboardPage() {
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<UserProfileWithId | null>(null);
   const [isEditUserDialogOpen, setIsEditUserDialogOpen] = useState(false);
 
-  const [selectedFlagForView, setSelectedFlagForView] = useState<FlaggedResponseLogWithId | null>(null); // New state
-  const [isViewFlagDialogOpen, setIsViewFlagDialogOpen] = useState(false); // New state
+  const [selectedFlagForView, setSelectedFlagForView] = useState<FlaggedResponseLogWithId | null>(null);
+  const [isViewFlagDialogOpen, setIsViewFlagDialogOpen] = useState(false);
 
   const isLoading = loading || profileLoading;
 
@@ -147,6 +147,11 @@ export default function AdminDashboardPage() {
   const handleViewFlagDetails = (flag: FlaggedResponseLogWithId) => {
     setSelectedFlagForView(flag);
     setIsViewFlagDialogOpen(true);
+  };
+
+  const handleFlagActionCompleted = () => {
+    fetchAdminData(); // Refresh the list of flagged responses
+    setIsViewFlagDialogOpen(false); // Close the dialog
   };
 
 
@@ -367,6 +372,7 @@ export default function AdminDashboardPage() {
           isOpen={isViewFlagDialogOpen}
           onOpenChange={setIsViewFlagDialogOpen}
           flaggedResponse={selectedFlagForView}
+          onFlagActionCompleted={handleFlagActionCompleted}
         />
       )}
     </div>

@@ -1,5 +1,5 @@
 
-import { ref, set, get, push, serverTimestamp, query, orderByChild, onValue, off, type DatabaseReference } from 'firebase/database';
+import { ref, set, get, push, serverTimestamp, query, orderByChild, onValue, off, type DatabaseReference, remove } from 'firebase/database';
 import { getDatabase, type Database } from 'firebase/database';
 import { app } from '@/lib/firebase';
 import type { User } from 'firebase/auth';
@@ -305,16 +305,30 @@ export async function getFlaggedResponses(): Promise<FlaggedResponseLogWithId[]>
   }
 }
 
+export async function deleteFlaggedResponse(flagId: string): Promise<void> {
+  if (!flagId) {
+    throw new Error("Flag ID is required to delete a flagged response.");
+  }
+  const flagRef = ref(database, `flaggedResponses/${flagId}`);
+  try {
+    await remove(flagRef);
+    console.log(`Flagged response with ID ${flagId} deleted successfully.`);
+  } catch (error) {
+    console.error(`Error deleting flagged response with ID ${flagId}:`, error);
+    throw error;
+  }
+}
+
 
 export async function saveChatMessage(
   userId: string,
   role: 'student' | 'tutor',
   content: string,
   attachment?: StoredChatMessageAttachment
-): Promise<void> {
+): Promise<string | null> {
   if (!userId) {
     console.error("Cannot save chat message without userId.");
-    return;
+    return null;
   }
   const messagesRef = ref(database, `userChatHistory/${userId}/messages`);
   const newMessageRef = push(messagesRef);
@@ -326,8 +340,10 @@ export async function saveChatMessage(
   };
   try {
     await set(newMessageRef, messageData);
+    return newMessageRef.key; // Return the generated key/ID
   } catch (error) {
     console.error(`Error saving chat message for user ${userId}:`, error);
+    return null;
   }
 }
 
@@ -354,6 +370,7 @@ export function loadChatHistory(
     }
     // Sort by timestamp client-side if Firebase doesn't guarantee order perfectly for onValue
     // For serverTimestamp, actual numeric values will be used for sorting
+    // Ensure timestamp is treated as number for sorting
     messages.sort((a, b) => (a.timestamp as number) - (b.timestamp as number));
     onMessagesLoaded(messages);
   }, (error) => {
@@ -363,7 +380,8 @@ export function loadChatHistory(
 
   // Return the unsubscribe function
   return () => {
-    off(messagesRef, 'value', listener);
+    if (messagesRef) {
+        off(messagesRef, 'value', listener);
+    }
   };
 }
-

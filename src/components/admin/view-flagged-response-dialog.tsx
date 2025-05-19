@@ -1,6 +1,7 @@
 
 "use client";
 
+import { useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -12,49 +13,67 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { FlaggedResponseLogWithId } from "@/services/user-service";
+import { deleteFlaggedResponse } from "@/services/user-service"; // Import delete function
 import { format } from 'date-fns';
 import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/hooks/use-toast"; // New import
-import { CheckCircle, XCircle } from "lucide-react"; // Icons for buttons
+import { useToast } from "@/hooks/use-toast";
+import { CheckCircle, XCircle, Loader2 } from "lucide-react"; // Icons for buttons
 
 interface ViewFlaggedResponseDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   flaggedResponse: FlaggedResponseLogWithId | null;
+  onFlagActionCompleted: () => void; // Callback to refresh list and close dialog
 }
 
 export default function ViewFlaggedResponseDialog({
   isOpen,
   onOpenChange,
   flaggedResponse,
+  onFlagActionCompleted,
 }: ViewFlaggedResponseDialogProps) {
-  const { toast } = useToast(); // Initialize toast
+  const { toast } = useToast();
+  const [isProcessing, setIsProcessing] = useState(false);
 
   if (!flaggedResponse) {
     return null;
   }
 
-  const handleAcceptFlag = () => {
+  const handleAcceptFlag = async () => {
+    if (!flaggedResponse) return;
+    setIsProcessing(true);
     // In a real application, this would trigger a backend process
-    // For example: updateFlagStatus(flaggedResponse.id, 'accepted');
+    // For example: updateFlagStatusInDB(flaggedResponse.id, 'accepted');
     console.log("Flag accepted (simulated):", flaggedResponse.id);
     toast({
       title: "Flag Accepted",
-      description: `Flag for message ID ${flaggedResponse.flaggedMessageId} has been marked as accepted (simulated).`,
+      description: `Flag for message ID ${flaggedResponse.flaggedMessageId} has been marked as accepted (action pending implementation).`,
     });
-    onOpenChange(false); // Close the dialog
+    // onOpenChange(false); // Close the dialog
+    onFlagActionCompleted(); // Signal parent to refresh and close
+    setIsProcessing(false);
   };
 
-  const handleIgnoreFlag = () => {
-    // In a real application, this would trigger a backend process
-    // For example: updateFlagStatus(flaggedResponse.id, 'ignored');
-    console.log("Flag ignored (simulated):", flaggedResponse.id);
-    toast({
-      title: "Flag Ignored",
-      description: `Flag for message ID ${flaggedResponse.flaggedMessageId} has been marked as ignored (simulated).`,
-      variant: "default", 
-    });
-    onOpenChange(false); // Close the dialog
+  const handleIgnoreFlag = async () => {
+    if (!flaggedResponse) return;
+    setIsProcessing(true);
+    try {
+      await deleteFlaggedResponse(flaggedResponse.id);
+      toast({
+        title: "Flag Ignored & Deleted",
+        description: `Flag for message ID ${flaggedResponse.flaggedMessageId} has been successfully deleted.`,
+      });
+      onFlagActionCompleted(); // Signal parent to refresh and close
+    } catch (error) {
+      console.error("Error deleting flagged response:", error);
+      toast({
+        variant: "destructive",
+        title: "Deletion Failed",
+        description: "Could not delete the flagged response.",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
 
@@ -107,15 +126,15 @@ export default function ViewFlaggedResponseDialog({
         </div>
 
         <DialogFooter className="mt-auto pt-4 border-t flex-wrap justify-end gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isProcessing}>
             Close
           </Button>
-          <Button variant="destructive" onClick={handleIgnoreFlag}>
-            <XCircle className="mr-2 h-4 w-4" />
-            Ignore Flag
+          <Button variant="destructive" onClick={handleIgnoreFlag} disabled={isProcessing}>
+            {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
+            Ignore & Delete Flag
           </Button>
-          <Button onClick={handleAcceptFlag}>
-            <CheckCircle className="mr-2 h-4 w-4" />
+          <Button onClick={handleAcceptFlag} disabled={isProcessing}>
+            {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
             Accept Flag
           </Button>
         </DialogFooter>
