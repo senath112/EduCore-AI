@@ -14,6 +14,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import type { FlaggedResponseLogWithId } from "@/services/user-service";
 import { format } from 'date-fns';
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast"; // New import
+import { CheckCircle, XCircle } from "lucide-react"; // Icons for buttons
 
 interface ViewFlaggedResponseDialogProps {
   isOpen: boolean;
@@ -26,9 +28,35 @@ export default function ViewFlaggedResponseDialog({
   onOpenChange,
   flaggedResponse,
 }: ViewFlaggedResponseDialogProps) {
+  const { toast } = useToast(); // Initialize toast
+
   if (!flaggedResponse) {
     return null;
   }
+
+  const handleAcceptFlag = () => {
+    // In a real application, this would trigger a backend process
+    // For example: updateFlagStatus(flaggedResponse.id, 'accepted');
+    console.log("Flag accepted (simulated):", flaggedResponse.id);
+    toast({
+      title: "Flag Accepted",
+      description: `Flag for message ID ${flaggedResponse.flaggedMessageId} has been marked as accepted (simulated).`,
+    });
+    onOpenChange(false); // Close the dialog
+  };
+
+  const handleIgnoreFlag = () => {
+    // In a real application, this would trigger a backend process
+    // For example: updateFlagStatus(flaggedResponse.id, 'ignored');
+    console.log("Flag ignored (simulated):", flaggedResponse.id);
+    toast({
+      title: "Flag Ignored",
+      description: `Flag for message ID ${flaggedResponse.flaggedMessageId} has been marked as ignored (simulated).`,
+      variant: "default", 
+    });
+    onOpenChange(false); // Close the dialog
+  };
+
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -78,11 +106,18 @@ export default function ViewFlaggedResponseDialog({
           </div>
         </div>
 
-        <DialogFooter className="mt-auto pt-4 border-t">
+        <DialogFooter className="mt-auto pt-4 border-t flex-wrap justify-end gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Close
           </Button>
-          {/* Future actions like "Resolve Flag" or "Take Action" could go here */}
+          <Button variant="destructive" onClick={handleIgnoreFlag}>
+            <XCircle className="mr-2 h-4 w-4" />
+            Ignore Flag
+          </Button>
+          <Button onClick={handleAcceptFlag}>
+            <CheckCircle className="mr-2 h-4 w-4" />
+            Accept Flag
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
