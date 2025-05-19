@@ -17,7 +17,7 @@ export interface UserProfile {
   credits?: number;
   createdAt: string; // ISO string
   lastUpdatedAt?: string; // ISO string
-  isAdmin?: boolean; // Added admin flag
+  isAdmin?: boolean;
 }
 
 export interface UserQuestionLog {
@@ -38,17 +38,20 @@ export interface FlaggedResponseLog {
   chatHistorySnapshot: Array<{ role: string; content: string }>;
 }
 
+export interface FlaggedResponseLogWithId extends FlaggedResponseLog {
+  id: string;
+}
+
 export interface StoredChatMessageAttachment {
   name: string;
-  type: 'image'; // Extend with other types like 'pdf' if needed in future
-  // storageUrl?: string; // Optional: if uploading to Firebase Storage
+  type: 'image';
 }
 
 export interface StoredChatMessage {
-  id?: string; // Added by loadChatHistory from Firebase key
+  id?: string;
   role: 'student' | 'tutor';
   content: string;
-  timestamp: string; // Server timestamp (ISO string or number for Firebase)
+  timestamp: string | object; // Can be serverTimestamp object before write
   attachment?: StoredChatMessageAttachment;
 }
 
@@ -81,7 +84,6 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
     }
   } catch (error) {
     console.error("Error fetching existing user profile during saveUserData:", error);
-    // Continue, as profile might not exist yet
   }
 
   const now = new Date().toISOString();
@@ -95,10 +97,6 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
     finalCredits = DEFAULT_INITIAL_CREDITS;
   }
 
-  // Construct the profile, ensuring isAdmin is handled carefully.
-  // User-facing forms (Signup, CompleteProfile, EditProfile) do not pass `isAdmin` in `additionalData`.
-  // `isAdmin` defaults to false for new users and is preserved for existing users.
-  // It can only be changed to true by a trusted process (e.g. manual DB edit or future admin tool passing it in additionalData).
   const profileData: UserProfile = {
     email: user.email,
     displayName: additionalData.displayName ?? existingProfile?.displayName ?? user.displayName ?? user.email?.split('@')[0],
@@ -112,16 +110,14 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
     isAdmin: typeof additionalData.isAdmin === 'boolean' ? additionalData.isAdmin : (existingProfile?.isAdmin || false),
   };
 
-  // Remove undefined values before saving
   const cleanedProfileData = Object.fromEntries(
     Object.entries(profileData).filter(([, value]) => value !== undefined)
   ) as Partial<UserProfile>;
 
-
   try {
     await set(userProfileRef, cleanedProfileData);
     console.log('User data saved successfully for UID:', user.uid, 'Admin status:', cleanedProfileData.isAdmin);
-    return cleanedProfileData as UserProfile; // Return the saved data
+    return cleanedProfileData as UserProfile;
   } catch (error) {
     console.error('Error saving user data:', error);
     throw error;
@@ -155,13 +151,12 @@ export async function saveUserQuestion(
     console.warn('Attempted to save question with missing userId or empty content.');
     return;
   }
-  // Path uses userId directly for robustness
   const userQueriesHistoryRef = ref(database, `userQuestionLogs/${userId}/history`);
   const newQuestionRef = push(userQueriesHistoryRef);
   const questionLog: UserQuestionLog = {
     timestamp: new Date().toISOString(),
     userId: userId,
-    userDisplayName: displayName || null, // Store display name for context
+    userDisplayName: displayName || null,
     questionContent: questionContent,
   };
   try {
@@ -204,6 +199,29 @@ export async function saveFlaggedResponse(
   }
 }
 
+export async function getFlaggedResponses(): Promise<FlaggedResponseLogWithId[]> {
+  const flaggedResponsesRef = ref(database, 'flaggedResponses');
+  try {
+    const snapshot = await get(flaggedResponsesRef);
+    if (snapshot.exists()) {
+      const data: Record<string, FlaggedResponseLog> = snapshot.val();
+      return Object.entries(data)
+        .map(([id, log]) => ({
+          ...log,
+          id,
+        }))
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()); // Sort by newest first
+    }
+    return [];
+  } catch (error) {
+    console.error('Error fetching flagged responses:', error);
+    // Depending on how you want to handle this in the UI, you might rethrow or return empty.
+    // For now, let's rethrow to make it clear an error occurred.
+    throw error;
+  }
+}
+
+
 export async function saveChatMessage(
   userId: string,
   role: 'student' | 'tutor',
@@ -219,7 +237,7 @@ export async function saveChatMessage(
   const messageData: Omit<StoredChatMessage, 'id'> = {
     role,
     content,
-    timestamp: serverTimestamp() as any, // Use server timestamp for ordering
+    timestamp: serverTimestamp(), // Use server timestamp for ordering
     ...(attachment && { attachment }),
   };
   try {
@@ -228,37 +246,3 @@ export async function saveChatMessage(
     console.error(`Error saving chat message for user ${userId}:`, error);
   }
 }
-
-// Chat history is not loaded in this version of chat-interface.
-// export function loadChatHistory(
-//   userId: string,
-//   onMessagesLoaded: (messages: StoredChatMessage[]) => void
-// ): () => void {
-//   if (!userId) {
-//     console.warn("Cannot load chat history without userId.");
-//     onMessagesLoaded([]);
-//     return () => {}; 
-//   }
-
-//   const messagesRef: DatabaseReference = query(
-//     ref(database, `userChatHistory/${userId}/messages`),
-//     orderByChild('timestamp') 
-//   );
-
-//   const listener = onValue(messagesRef, (snapshot) => {
-//     const messages: StoredChatMessage[] = [];
-//     if (snapshot.exists()) {
-//       snapshot.forEach((childSnapshot) => {
-//         messages.push({ id: childSnapshot.key!, ...childSnapshot.val() } as StoredChatMessage);
-//       });
-//     }
-//     onMessagesLoaded(messages);
-//   }, (error) => {
-//     console.error(`Error loading chat history for user ${userId}:`, error);
-//     onMessagesLoaded([]); 
-//   });
-
-//   return () => {
-//     off(messagesRef, 'value', listener);
-//   };
-// }
