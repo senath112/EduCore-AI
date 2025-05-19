@@ -6,8 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-// Removed: import { auth } from '@/lib/firebase'; // auth will come from context
+import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signOut, sendEmailVerification } from 'firebase/auth';
 import { saveUserData } from '@/services/user-service';
 import type { LoginFormValues } from '@/lib/schemas';
 import { LoginFormSchema } from '@/lib/schemas';
@@ -23,9 +22,12 @@ import { useAuth } from '@/hooks/use-auth';
 export default function LoginForm() {
   const router = useRouter();
   const { toast } = useToast();
-  const { refreshUserProfile, authInstance } = useAuth(); // Get authInstance
+  const { refreshUserProfile, authInstance } = useAuth(); 
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isResendingVerification, setIsResendingVerification] = useState(false);
+  const [showResendVerificationButtonForEmail, setShowResendVerificationButtonForEmail] = useState<string | null>(null);
+
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(LoginFormSchema),
@@ -35,22 +37,80 @@ export default function LoginForm() {
     },
   });
 
+  const handleResendVerificationEmail = async (email: string) => {
+    if (!authInstance || !authInstance.currentUser) {
+        toast({ variant: "destructive", title: "Error", description: "Cannot resend verification email. User not signed in." });
+        return;
+    }
+    // Ensure we are trying to resend for the currently 'partially' signed-in user
+    if (authInstance.currentUser.email !== email) {
+        toast({ variant: "destructive", title: "Error", description: "Mismatch in email for resending verification." });
+        if (authInstance.currentUser) await signOut(authInstance); // Sign out if there's a mismatch
+        setShowResendVerificationButtonForEmail(null);
+        return;
+    }
+
+    setIsResendingVerification(true);
+    try {
+        await sendEmailVerification(authInstance.currentUser);
+        toast({
+            title: "Verification Email Resent",
+            description: `A new verification email has been sent to ${email}. Please check your inbox.`,
+            duration: 7000,
+        });
+        setShowResendVerificationButtonForEmail(null); // Hide button after successful resend
+    } catch (error: any) {
+        console.error("Error resending verification email:", error);
+        toast({ variant: "destructive", title: "Resend Failed", description: error.message || "Could not resend verification email." });
+    } finally {
+        setIsResendingVerification(false);
+    }
+  };
+
   const onSubmit = async (values: LoginFormValues) => {
     if (!authInstance) {
       toast({ variant: "destructive", title: "Error", description: "Authentication service not ready. Please try again." });
       return;
     }
     setIsLoading(true);
+    setShowResendVerificationButtonForEmail(null); 
     try {
-      await signInWithEmailAndPassword(authInstance, values.email, values.password);
+      const userCredential = await signInWithEmailAndPassword(authInstance, values.email, values.password);
+      const user = userCredential.user;
+
+      if (!user.emailVerified) {
+        toast({ 
+          variant: "destructive", 
+          title: "Email Not Verified", 
+          description: "Please verify your email address. Check your inbox for the verification link.",
+          duration: 7000
+        });
+        setShowResendVerificationButtonForEmail(user.email); // Show resend button
+        // Don't sign out immediately, allow them to click resend
+        setIsLoading(false);
+        return; // Stop login process
+      }
+
       await refreshUserProfile();
       toast({ title: "Login Successful", description: "Welcome back! Redirecting..." });
       router.push('/');
-    } catch (error: any) {
+    } catch (error: any)
+     {
       console.error("Login error:", error);
-      toast({ variant: "destructive", title: "Login Failed", description: error.message || "Invalid email or password." });
+      // Handle specific error codes if needed, e.g., auth/user-not-found, auth/wrong-password
+      if (error.code === 'auth/user-disabled') {
+        toast({ variant: "destructive", title: "Account Disabled", description: "Your account has been disabled. Please contact support." });
+      } else if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+        toast({ variant: "destructive", title: "Login Failed", description: "Invalid email or password." });
+      }
+      else {
+        toast({ variant: "destructive", title: "Login Failed", description: error.message || "An unexpected error occurred." });
+      }
     } finally {
-      setIsLoading(false);
+      // Only set isLoading to false if not waiting for resend button
+      if (showResendVerificationButtonForEmail === null) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -60,10 +120,12 @@ export default function LoginForm() {
       return;
     }
     setIsGoogleLoading(true);
+    setShowResendVerificationButtonForEmail(null);
     const provider = new GoogleAuthProvider();
     try {
       const result = await signInWithPopup(authInstance, provider);
       const user = result.user;
+      // Google users are generally considered email verified
       if (user) {
         await saveUserData(user, { email: user.email, displayName: user.displayName, photoURL: user.photoURL });
         await refreshUserProfile();
@@ -101,7 +163,7 @@ export default function LoginForm() {
                 <FormItem>
                   <FormLabel>Email</FormLabel>
                   <FormControl>
-                    <Input type="email" placeholder="you@example.com" {...field} disabled={isLoading || isGoogleLoading} />
+                    <Input type="email" placeholder="you@example.com" {...field} disabled={isLoading || isGoogleLoading || isResendingVerification} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -114,7 +176,7 @@ export default function LoginForm() {
                 <FormItem>
                   <FormLabel>Password</FormLabel>
                   <FormControl>
-                    <Input type="password" placeholder="••••••••" {...field} disabled={isLoading || isGoogleLoading} />
+                    <Input type="password" placeholder="••••••••" {...field} disabled={isLoading || isGoogleLoading || isResendingVerification} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -122,10 +184,21 @@ export default function LoginForm() {
             />
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
-            <Button type="submit" className="w-full" disabled={isLoading || isGoogleLoading}>
+            <Button type="submit" className="w-full" disabled={isLoading || isGoogleLoading || isResendingVerification}>
               {isLoading ? <Loader2 className="animate-spin" /> : 'Log In'}
             </Button>
-             <Button variant="outline" type="button" className="w-full" onClick={handleGoogleSignIn} disabled={isLoading || isGoogleLoading}>
+            {showResendVerificationButtonForEmail && (
+                 <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => handleResendVerificationEmail(showResendVerificationButtonForEmail)}
+                    disabled={isResendingVerification}
+                >
+                    {isResendingVerification ? <Loader2 className="animate-spin" /> : 'Resend Verification Email'}
+                </Button>
+            )}
+             <Button variant="outline" type="button" className="w-full" onClick={handleGoogleSignIn} disabled={isLoading || isGoogleLoading || isResendingVerification}>
               {isGoogleLoading ? <Loader2 className="animate-spin" /> : (
                 <svg className="mr-2 h-4 w-4" viewBox="0 0 48 48" role="img" aria-label="Google logo">
                   <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>

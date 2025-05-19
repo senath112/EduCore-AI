@@ -6,8 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-// Removed: import { auth } from '@/lib/firebase'; // auth will come from context
+import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, sendEmailVerification, signOut } from 'firebase/auth';
 import { saveUserData } from '@/services/user-service';
 import type { SignupFormValues } from '@/lib/schemas';
 import { SignupFormSchema } from '@/lib/schemas';
@@ -25,7 +24,7 @@ const DEFAULT_SIGNUP_CREDITS = 10;
 export default function SignupForm() {
   const router = useRouter();
   const { toast } = useToast();
-  const { refreshUserProfile, authInstance } = useAuth(); // Get authInstance
+  const { refreshUserProfile, authInstance } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
@@ -58,9 +57,16 @@ export default function SignupForm() {
           email: values.email,
           credits: DEFAULT_SIGNUP_CREDITS,
         });
-        await refreshUserProfile();
-        toast({ title: "Signup Successful", description: "Welcome! Redirecting to the app..." });
-        router.push('/');
+        
+        await sendEmailVerification(user);
+        toast({ 
+          title: "Signup Successful!", 
+          description: `A verification email has been sent to ${user.email}. Please verify your email before logging in.`,
+          duration: 10000 
+        });
+
+        await signOut(authInstance); // Sign out the user to force verification
+        router.push('/login'); // Redirect to login page
       }
     } catch (error: any) {
       console.error("Signup error:", error);
@@ -80,8 +86,13 @@ export default function SignupForm() {
     try {
       const result = await signInWithPopup(authInstance, provider);
       const user = result.user;
+      // Google users are typically considered email verified by default if their Google account is.
+      // No explicit sendEmailVerification call needed here usually.
       if (user) {
-        await saveUserData(user, { email: user.email, displayName: user.displayName, photoURL: user.photoURL });
+        // Check if this is the first sign-in for this Google user by trying to get their profile
+        // If no profile, saveUserData will create one with initial details.
+        // This is a simplified check; a more robust way would involve checking creationTime vs lastSignInTime.
+        await saveUserData(user, { email: user.email, displayName: user.displayName, photoURL: user.photoURL, credits: DEFAULT_SIGNUP_CREDITS });
         await refreshUserProfile();
         toast({ title: "Google Sign-in Successful", description: "Welcome! Redirecting to the app..." });
         router.push('/');
