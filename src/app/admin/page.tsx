@@ -2,11 +2,12 @@
 "use client";
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Loader2, ShieldAlert, Flag, MessageSquareText, UserCog, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { getFlaggedResponses, type FlaggedResponseLogWithId, getAllUserProfiles, type UserProfileWithId } from '@/services/user-service';
+import EditUserDialog from '@/components/admin/edit-user-dialog';
 import {
   Table,
   TableBody,
@@ -29,38 +30,54 @@ export default function AdminDashboardPage() {
   const [users, setUsers] = useState<UserProfileWithId[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
 
+  const [selectedUserForEdit, setSelectedUserForEdit] = useState<UserProfileWithId | null>(null);
+  const [isEditUserDialogOpen, setIsEditUserDialogOpen] = useState(false);
+
   const isLoading = loading || profileLoading;
+
+  const fetchAdminData = useCallback(async () => {
+    if (!userProfile?.isAdmin) return; // Ensure only admin fetches data
+    setLoadingFlags(true);
+    setLoadingUsers(true);
+    try {
+      const responses = await getFlaggedResponses();
+      setFlaggedResponses(responses);
+      const userProfiles = await getAllUserProfiles();
+      setUsers(userProfiles);
+    } catch (error) {
+      console.error("Failed to fetch admin data:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Could not load admin data.",
+      });
+    } finally {
+      setLoadingFlags(false);
+      setLoadingUsers(false);
+    }
+  }, [userProfile?.isAdmin, toast]);
+
 
   useEffect(() => {
     if (!isLoading) {
       if (!user || !userProfile?.isAdmin) {
         router.push('/');
       } else {
-        // User is admin, fetch data
-        const fetchAdminData = async () => {
-          setLoadingFlags(true);
-          setLoadingUsers(true);
-          try {
-            const responses = await getFlaggedResponses();
-            setFlaggedResponses(responses);
-            const userProfiles = await getAllUserProfiles();
-            setUsers(userProfiles);
-          } catch (error) {
-            console.error("Failed to fetch admin data:", error);
-            toast({
-              variant: "destructive",
-              title: "Error",
-              description: "Could not load admin data.",
-            });
-          } finally {
-            setLoadingFlags(false);
-            setLoadingUsers(false);
-          }
-        };
         fetchAdminData();
       }
     }
-  }, [user, userProfile, isLoading, router, toast]);
+  }, [user, userProfile, isLoading, router, fetchAdminData]);
+
+  const handleEditUserClick = (userToEdit: UserProfileWithId) => {
+    setSelectedUserForEdit(userToEdit);
+    setIsEditUserDialogOpen(true);
+  };
+
+  const handleUserUpdateSuccess = () => {
+    setIsEditUserDialogOpen(false);
+    fetchAdminData(); // Re-fetch data to show updated user list
+  };
+
 
   if (isLoading) {
     return (
@@ -159,7 +176,7 @@ export default function AdminDashboardPage() {
                     </TableCell>
                     <TableCell>{u.lastUpdatedAt ? format(new Date(u.lastUpdatedAt), 'PPp') : 'N/A'}</TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => alert(`User Details:\nID: ${u.id}\nName: ${u.displayName}\nEmail: ${u.email}\nCredits: ${u.credits}\nAdmin: ${u.isAdmin}\nAge: ${u.age}\nA/L Year: ${u.alFacingYear}\nPhone: ${u.phoneNumber}`)}>
+                      <Button variant="ghost" size="sm" onClick={() => handleEditUserClick(u)}>
                         <UserCog className="h-4 w-4 mr-2" />
                         View/Edit
                       </Button>
@@ -225,6 +242,14 @@ export default function AdminDashboardPage() {
           </div>
         )}
       </section>
+      {selectedUserForEdit && (
+        <EditUserDialog
+          isOpen={isEditUserDialogOpen}
+          onOpenChange={setIsEditUserDialogOpen}
+          userToEdit={selectedUserForEdit}
+          onUserUpdated={handleUserUpdateSuccess}
+        />
+      )}
     </div>
   );
 }

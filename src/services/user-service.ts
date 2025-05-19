@@ -146,6 +146,52 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
   }
 }
 
+export async function adminUpdateUserProfile(
+  targetUserId: string,
+  updates: Partial<Pick<UserProfile, 'displayName' | 'age' | 'alFacingYear' | 'phoneNumber' | 'credits' | 'isAdmin'>>
+): Promise<void> {
+  if (!targetUserId) throw new Error("Target User ID is required for admin update.");
+
+  const userProfileRef = ref(database, `users/${targetUserId}/profile`);
+  const snapshot = await get(userProfileRef);
+
+  if (!snapshot.exists()) {
+    throw new Error("User profile not found for admin update.");
+  }
+
+  const existingProfile = snapshot.val() as UserProfile;
+  const now = new Date().toISOString();
+
+  const updatedProfileData: UserProfile = {
+    ...existingProfile,
+    displayName: updates.displayName !== undefined ? (updates.displayName === "" ? null : updates.displayName) : existingProfile.displayName,
+    age: updates.age !== undefined ? updates.age : existingProfile.age,
+    alFacingYear: updates.alFacingYear !== undefined ? updates.alFacingYear : existingProfile.alFacingYear,
+    phoneNumber: updates.phoneNumber !== undefined ? (updates.phoneNumber === "" ? null : updates.phoneNumber) : existingProfile.phoneNumber,
+    credits: updates.credits !== undefined ? updates.credits : existingProfile.credits,
+    isAdmin: typeof updates.isAdmin === 'boolean' ? updates.isAdmin : existingProfile.isAdmin,
+    lastUpdatedAt: now,
+    // Ensure email, photoURL, createdAt are preserved and not part of 'updates' from admin
+    email: existingProfile.email, 
+    photoURL: existingProfile.photoURL,
+    createdAt: existingProfile.createdAt,
+  };
+  
+  // Clean undefined values before saving to Firebase
+  const cleanedUpdates = Object.fromEntries(
+    Object.entries(updatedProfileData).filter(([, value]) => value !== undefined)
+  ) as UserProfile;
+
+
+  try {
+    await set(userProfileRef, cleanedUpdates);
+    console.log(`Admin updated profile for UID: ${targetUserId}`);
+  } catch (error) {
+    console.error(`Error updating profile for UID ${targetUserId} by admin:`, error);
+    throw error;
+  }
+}
+
 
 export async function updateUserCredits(userId: string, newCreditAmount: number): Promise<void> {
   if (!userId) throw new Error("User ID is required to update credits.");
@@ -265,4 +311,40 @@ export async function saveChatMessage(
   } catch (error) {
     console.error(`Error saving chat message for user ${userId}:`, error);
   }
+}
+
+// Function to listen for chat history updates
+// Returns an unsubscribe function
+export function loadChatHistory(
+  userId: string,
+  onMessagesLoaded: (messages: StoredChatMessage[]) => void
+): () => void {
+  if (!userId) {
+    console.warn("loadChatHistory called without userId.");
+    onMessagesLoaded([]); // Return empty if no user
+    return () => {}; // Return a no-op unsubscribe function
+  }
+
+  const messagesRef = query(ref(database, `userChatHistory/${userId}/messages`), orderByChild('timestamp'));
+  
+  const listener = onValue(messagesRef, (snapshot) => {
+    const messages: StoredChatMessage[] = [];
+    if (snapshot.exists()) {
+      snapshot.forEach((childSnapshot) => {
+        messages.push({ id: childSnapshot.key!, ...childSnapshot.val() } as StoredChatMessage);
+      });
+    }
+    // Sort by timestamp client-side if Firebase doesn't guarantee order perfectly for onValue
+    // For serverTimestamp, actual numeric values will be used for sorting
+    messages.sort((a, b) => (a.timestamp as number) - (b.timestamp as number));
+    onMessagesLoaded(messages);
+  }, (error) => {
+    console.error("Error loading chat history:", error);
+    onMessagesLoaded([]); // Pass empty on error
+  });
+
+  // Return the unsubscribe function
+  return () => {
+    off(messagesRef, 'value', listener);
+  };
 }

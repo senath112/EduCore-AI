@@ -29,3 +29,20 @@ export const CompleteProfileFormSchema = z.object({
 });
 
 export type CompleteProfileFormValues = z.infer<typeof CompleteProfileFormSchema>;
+
+export const AdminEditUserFormSchema = z.object({
+  displayName: z.string().optional(),
+  age: z.coerce.number().min(10, { message: "Age must be at least 10." }).max(100, { message: "Age must be less than 100."}).optional().or(z.literal('')), // Allow empty string to clear, or number
+  alFacingYear: z.coerce.number().min(new Date().getFullYear(), { message: "A/L facing year must be current year or later." }).max(new Date().getFullYear() + 10, { message: "A/L facing year seems too far in the future."}).optional().or(z.literal('')), // Allow empty string to clear, or number
+  phoneNumber: z.string().regex(/^\+?[0-9]{10,15}$/, { message: "Please enter a valid phone number (10-15 digits, optionally starting with +)." }).optional().or(z.literal('')), // Allow empty string to clear
+  credits: z.coerce.number().min(0, { message: "Credits cannot be negative."}),
+  isAdmin: z.boolean(),
+}).transform(values => ({
+    ...values,
+    age: values.age === '' ? undefined : values.age,
+    alFacingYear: values.alFacingYear === '' ? undefined : values.alFacingYear,
+    phoneNumber: values.phoneNumber === '' ? undefined : values.phoneNumber,
+}));
+
+
+export type AdminEditUserFormValues = z.infer<typeof AdminEditUserFormSchema>;
