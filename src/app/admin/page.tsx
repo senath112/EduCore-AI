@@ -3,10 +3,10 @@
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Loader2, ShieldAlert, Flag, MessageSquareText } from 'lucide-react';
+import { Loader2, ShieldAlert, Flag, MessageSquareText, UserCog, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { getFlaggedResponses, type FlaggedResponseLogWithId } from '@/services/user-service';
+import { getFlaggedResponses, type FlaggedResponseLogWithId, getAllUserProfiles, type UserProfileWithId } from '@/services/user-service';
 import {
   Table,
   TableBody,
@@ -26,6 +26,8 @@ export default function AdminDashboardPage() {
 
   const [flaggedResponses, setFlaggedResponses] = useState<FlaggedResponseLogWithId[]>([]);
   const [loadingFlags, setLoadingFlags] = useState(true);
+  const [users, setUsers] = useState<UserProfileWithId[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
 
   const isLoading = loading || profileLoading;
 
@@ -34,24 +36,28 @@ export default function AdminDashboardPage() {
       if (!user || !userProfile?.isAdmin) {
         router.push('/');
       } else {
-        // User is admin, fetch flagged responses
-        const fetchFlags = async () => {
+        // User is admin, fetch data
+        const fetchAdminData = async () => {
           setLoadingFlags(true);
+          setLoadingUsers(true);
           try {
             const responses = await getFlaggedResponses();
             setFlaggedResponses(responses);
+            const userProfiles = await getAllUserProfiles();
+            setUsers(userProfiles);
           } catch (error) {
-            console.error("Failed to fetch flagged responses:", error);
+            console.error("Failed to fetch admin data:", error);
             toast({
               variant: "destructive",
               title: "Error",
-              description: "Could not load flagged responses.",
+              description: "Could not load admin data.",
             });
           } finally {
             setLoadingFlags(false);
+            setLoadingUsers(false);
           }
         };
-        fetchFlags();
+        fetchAdminData();
       }
     }
   }, [user, userProfile, isLoading, router, toast]);
@@ -93,7 +99,9 @@ export default function AdminDashboardPage() {
         <div className="p-6 border rounded-lg shadow-lg bg-card">
           <h2 className="text-xl font-semibold mb-3 text-card-foreground">User Management</h2>
           <p className="text-muted-foreground mb-4">View and manage user accounts.</p>
-          <Button variant="outline" disabled>View Users (Coming Soon)</Button>
+          <Button variant="outline" asChild>
+             <Link href="#user-management-section">View Users</Link>
+          </Button>
         </div>
         
         <div className="p-6 border rounded-lg shadow-lg bg-card">
@@ -109,6 +117,59 @@ export default function AdminDashboardPage() {
           <p className="text-muted-foreground mb-4">View application usage statistics.</p>
           <Button variant="outline" disabled>View Analytics (Coming Soon)</Button>
         </div>
+      </section>
+
+      <section id="user-management-section" className="mt-10 p-4 border rounded-lg shadow-sm bg-card">
+        <div className="flex items-center gap-3 mb-6">
+          <Users className="h-7 w-7 text-primary" />
+          <h2 className="text-2xl font-semibold text-card-foreground">User Management</h2>
+        </div>
+        {loadingUsers ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="ml-3 text-muted-foreground">Loading users...</p>
+          </div>
+        ) : users.length === 0 ? (
+          <p className="text-muted-foreground text-center py-10">No users found.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>User ID</TableHead>
+                  <TableHead>Display Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Credits</TableHead>
+                  <TableHead>Admin</TableHead>
+                  <TableHead>Last Updated</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {users.map((u) => (
+                  <TableRow key={u.id}>
+                    <TableCell className="font-medium truncate max-w-[100px]">{u.id}</TableCell>
+                    <TableCell>{u.displayName || 'N/A'}</TableCell>
+                    <TableCell>{u.email}</TableCell>
+                    <TableCell>{typeof u.credits === 'number' ? u.credits : 'N/A'}</TableCell>
+                    <TableCell>
+                      <Badge variant={u.isAdmin ? "default" : "outline"}>
+                        {u.isAdmin ? 'Yes' : 'No'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{u.lastUpdatedAt ? format(new Date(u.lastUpdatedAt), 'PPp') : 'N/A'}</TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="sm" onClick={() => alert(`User Details:\nID: ${u.id}\nName: ${u.displayName}\nEmail: ${u.email}\nCredits: ${u.credits}\nAdmin: ${u.isAdmin}\nAge: ${u.age}\nA/L Year: ${u.alFacingYear}\nPhone: ${u.phoneNumber}`)}>
+                        <UserCog className="h-4 w-4 mr-2" />
+                        View/Edit
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </section>
 
       <section id="flagged-responses-section" className="mt-10 p-4 border rounded-lg shadow-sm bg-card">

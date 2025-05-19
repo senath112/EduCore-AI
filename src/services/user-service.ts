@@ -20,6 +20,10 @@ export interface UserProfile {
   isAdmin?: boolean;
 }
 
+export interface UserProfileWithId extends UserProfile {
+  id: string;
+}
+
 export interface UserQuestionLog {
   timestamp: string; // ISO string
   userId: string;
@@ -67,6 +71,24 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
     return null;
   } catch (error) {
     console.error('Error fetching user profile:', error);
+    throw error;
+  }
+}
+
+export async function getAllUserProfiles(): Promise<UserProfileWithId[]> {
+  const usersRef = ref(database, 'users');
+  try {
+    const snapshot = await get(usersRef);
+    if (snapshot.exists()) {
+      const usersData = snapshot.val();
+      return Object.keys(usersData).map(userId => ({
+        id: userId,
+        ...usersData[userId].profile,
+      })).filter(profile => profile.email); // Ensure only profiles exist
+    }
+    return [];
+  } catch (error) {
+    console.error('Error fetching all user profiles:', error);
     throw error;
   }
 }
@@ -215,8 +237,6 @@ export async function getFlaggedResponses(): Promise<FlaggedResponseLogWithId[]>
     return [];
   } catch (error) {
     console.error('Error fetching flagged responses:', error);
-    // Depending on how you want to handle this in the UI, you might rethrow or return empty.
-    // For now, let's rethrow to make it clear an error occurred.
     throw error;
   }
 }
@@ -237,7 +257,7 @@ export async function saveChatMessage(
   const messageData: Omit<StoredChatMessage, 'id'> = {
     role,
     content,
-    timestamp: serverTimestamp(), // Use server timestamp for ordering
+    timestamp: serverTimestamp(), 
     ...(attachment && { attachment }),
   };
   try {
