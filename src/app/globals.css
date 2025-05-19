@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -14,19 +15,19 @@ body {
     --card-foreground: 160 9% 31%;
     --popover: 0 0% 100%;
     --popover-foreground: 160 9% 31%;
-    --primary: 160 40% 55%; /* Calm and intellectual green #59B399 */
+    --primary: 170 45% 48%; /* Teal #409986 */
     --primary-foreground: 0 0% 98%; /* Light gray/white */
-    --secondary: 160 30% 82%; /* Lighter green for secondary elements #BDE0D6 */
+    --secondary: 170 35% 78%; /* Lighter Teal #B4DCD5 */
     --secondary-foreground: 160 9% 31%;
-    --muted: 160 25% 88%; /* #D6EBE5 */
+    --muted: 170 25% 88%; /* Very Light Teal #D4EAE6 */
     --muted-foreground: 160 7% 45%; /* #697A75 */
-    --accent: 50 100% 50%; /* Vibrant yellow #FFD700 */
+    --accent: 10 90% 60%; /* Coral #FA8072 */
     --accent-foreground: 0 0% 9%; /* Dark for text on accent */
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 160 20% 80%; /* #C2DBCF */
+    --border: 170 25% 80%; /* Light Teal Border #BEDBD5 */
     --input: 0 0% 100%; /* White input background for better contrast */
-    --ring: 160 40% 55%; /* Use primary for ring */
+    --ring: 170 45% 48%; /* Teal Ring */
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
     --chart-3: 197 37% 24%;
@@ -43,25 +44,25 @@ body {
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
   .dark {
-    --background: 160 10% 12%; /* Dark green-gray #1A211F */
-    --foreground: 160 5% 85%; /* Light, slightly greenish-gray #D7E0DE */
-    --card: 160 10% 15%; /* #1F2925 */
-    --card-foreground: 160 5% 85%;
-    --popover: 160 10% 15%; /* #1F2925 */
-    --popover-foreground: 160 5% 85%;
-    --primary: 160 45% 50%; /* Calm green for dark mode #40BF9F */
+    --background: 170 15% 12%; /* Dark Teal #1A2321 */
+    --foreground: 170 10% 85%; /* Light Teal Text #D4E0DD */
+    --card: 170 15% 18%; /* Darker Teal Card #212E2B */
+    --card-foreground: 170 10% 85%;
+    --popover: 170 15% 18%; /* Darker Teal Popover #212E2B */
+    --popover-foreground: 170 10% 85%;
+    --primary: 170 50% 50%; /* Brighter Teal #40BF9C */
     --primary-foreground: 0 0% 98%; /* Light gray/white */
-    --secondary: 160 20% 28%; /* #3A5951 */
-    --secondary-foreground: 160 5% 85%;
-    --muted: 160 15% 22%; /* #2F403B */
-    --muted-foreground: 160 8% 55%; /* #7F8C88 */
-    --accent: 50 100% 50%; /* Vibrant yellow #FFD700 */
+    --secondary: 170 20% 30%; /* Medium Dark Teal #36544D */
+    --secondary-foreground: 170 10% 85%;
+    --muted: 170 18% 25%; /* Dark Muted Teal #324A44 */
+    --muted-foreground: 170 10% 60%; /* Light Muted Teal Text #8AA39D */
+    --accent: 10 85% 65%; /* Brighter Coral #FB9183 */
     --accent-foreground: 0 0% 9%; /* Dark for text on accent */
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
-    --border: 160 10% 28%; /* #42544F */
-    --input: 160 10% 20%; /* #29332F */
-    --ring: 160 45% 50%; /* Use primary for ring */
+    --border: 170 15% 30%; /* Dark Teal Border #3E5C55 */
+    --input: 170 15% 22%; /* Dark Teal Input #2B3D38 */
+    --ring: 170 50% 50%; /* Brighter Teal Ring */
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
