@@ -8,6 +8,8 @@ import LanguageSelector from '@/components/shared/language-selector';
 import SubjectSelector from '@/components/shared/subject-selector';
 import SettingsDialog from '@/components/settings/settings-dialog';
 import { useAuth } from '@/hooks/use-auth';
+import { useSettings } from '@/hooks/use-settings';
+import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -19,17 +21,20 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { User as UserIcon, LogOut, LogIn, CircleDollarSign, PlusCircle, Settings, CalendarDays, Phone, UserRound, Sun, Moon, ShieldCheck } from 'lucide-react'; 
-import { useSettings } from '@/hooks/use-settings';
+import { User as UserIcon, LogOut, LogIn, CircleDollarSign, PlusCircle, Settings, CalendarDays, Phone, UserRound, Sun, Moon, ShieldCheck, LifeBuoy, Loader2 } from 'lucide-react'; 
 import { useRouter } from 'next/navigation';
+import { generateSupportId } from '@/lib/supportUtils';
+import { saveSupportTicket, type SupportTicketLog } from '@/services/user-service';
 
 
 export default function Header() {
   const { user, userProfile, logout, loading: authLoading, profileLoading, handleAddCredits } = useAuth();
-  const { theme, setTheme } = useSettings();
+  const { theme, setTheme, subject, language } = useSettings();
+  const { toast } = useToast();
   const router = useRouter();
   const isLoading = authLoading || profileLoading;
   const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(false);
+  const [isGeneratingSupportId, setIsGeneratingSupportId] = useState(false);
 
 
   const onAddCreditsClick = async () => {
@@ -38,6 +43,44 @@ export default function Header() {
 
   const toggleTheme = () => {
     setTheme(theme === 'dark' ? 'light' : 'dark');
+  };
+
+  const handleGetSupportId = async () => {
+    if (!user || !userProfile) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "You must be logged in to get a Support ID.",
+      });
+      return;
+    }
+    setIsGeneratingSupportId(true);
+    try {
+      const supportId = generateSupportId();
+      const ticketData: SupportTicketLog = {
+        supportId,
+        userId: user.uid,
+        userDisplayName: userProfile.displayName || user.displayName || user.email,
+        subject,
+        language,
+        timestamp: new Date().toISOString(),
+      };
+      await saveSupportTicket(ticketData);
+      toast({
+        title: "Support ID Generated",
+        description: `Your Support ID is: ${supportId}. Please provide this ID when contacting support.`,
+        duration: 10000, // Keep toast longer for copying
+      });
+    } catch (error: any) {
+      console.error("Error generating or saving support ID:", error);
+      toast({
+        variant: "destructive",
+        title: "Error Generating Support ID",
+        description: error.message || "Could not generate a Support ID. Please try again.",
+      });
+    } finally {
+      setIsGeneratingSupportId(false);
+    }
   };
 
 
@@ -125,6 +168,14 @@ export default function Header() {
                   <DropdownMenuItem onClick={() => setIsSettingsDialogOpen(true)}>
                     <Settings className="mr-2 h-4 w-4" />
                     <span>Settings</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleGetSupportId} disabled={isGeneratingSupportId}>
+                    {isGeneratingSupportId ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <LifeBuoy className="mr-2 h-4 w-4" />
+                    )}
+                    <span>Get Support ID</span>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={logout}>

@@ -60,6 +60,15 @@ export interface StoredChatMessage {
   attachment?: StoredChatMessageAttachment;
 }
 
+export interface SupportTicketLog {
+  supportId: string;
+  userId: string;
+  userDisplayName: string | null;
+  subject: string;
+  language: string;
+  timestamp: string; // ISO string
+}
+
 
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
   if (!userId) return null;
@@ -234,7 +243,7 @@ export async function saveUserQuestion(
   questionContent: string
 ): Promise<void> {
   if (!userId || !questionContent.trim()) {
-    console.warn('Attempted to save question with missing userId or empty content.');
+    // console.warn('Attempted to save question with missing userId or empty content.');
     return;
   }
   const userQueriesHistoryRef = ref(database, `userQuestionLogs/${userId}/history`);
@@ -354,7 +363,7 @@ export function loadChatHistory(
   onMessagesLoaded: (messages: StoredChatMessage[]) => void
 ): () => void {
   if (!userId) {
-    console.warn("loadChatHistory called without userId.");
+    // console.warn("loadChatHistory called without userId.");
     onMessagesLoaded([]); // Return empty if no user
     return () => {}; // Return a no-op unsubscribe function
   }
@@ -384,4 +393,18 @@ export function loadChatHistory(
         off(messagesRef, 'value', listener);
     }
   };
+}
+
+export async function saveSupportTicket(ticketData: SupportTicketLog): Promise<void> {
+  if (!ticketData || !ticketData.supportId || !ticketData.userId) {
+    throw new Error("Invalid support ticket data provided.");
+  }
+  const ticketRef = ref(database, `supportTickets/${ticketData.supportId}`);
+  try {
+    await set(ticketRef, ticketData);
+    console.log(`Support ticket ${ticketData.supportId} saved for user ${ticketData.userId}.`);
+  } catch (error) {
+    console.error(`Error saving support ticket ${ticketData.supportId}:`, error);
+    throw error;
+  }
 }
