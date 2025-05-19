@@ -394,23 +394,49 @@ export default function AdminDashboardPage() {
                   <TableHead>Subject</TableHead>
                   <TableHead>Language</TableHead>
                   <TableHead>Timestamp</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {supportTickets.map((ticket) => (
-                  <TableRow key={ticket.supportId}>
-                    <TableCell className="font-medium">{ticket.supportId}</TableCell>
-                    <TableCell className="truncate max-w-[100px]">{ticket.userId}</TableCell>
-                    <TableCell>{ticket.userDisplayName || 'N/A'}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{ticket.subject}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">{ticket.language}</Badge>
-                    </TableCell>
-                    <TableCell>{format(new Date(ticket.timestamp), 'PPp')}</TableCell>
-                  </TableRow>
-                ))}
+                {supportTickets.map((ticket) => {
+                  const userForTicket = users.find(u => u.id === ticket.userId);
+                  return (
+                    <TableRow key={ticket.supportId}>
+                      <TableCell className="font-medium">{ticket.supportId}</TableCell>
+                      <TableCell className="truncate max-w-[100px]">{ticket.userId}</TableCell>
+                      <TableCell>{ticket.userDisplayName || 'N/A'}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{ticket.subject}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{ticket.language}</Badge>
+                      </TableCell>
+                      <TableCell>{format(new Date(ticket.timestamp), 'PPp')}</TableCell>
+                      <TableCell className="text-right">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => {
+                            if (userForTicket) {
+                              handlePasswordReset(userForTicket.email, userForTicket.id);
+                            } else {
+                              toast({ variant: "destructive", title: "User Not Found", description: "Could not find user details for this ticket to reset password." });
+                            }
+                          }}
+                          disabled={!userForTicket?.email || isSendingResetEmailFor === ticket.userId}
+                          title={!userForTicket?.email ? "User email not available" : "Send Password Reset Email"}
+                        >
+                          {isSendingResetEmailFor === ticket.userId ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                              <KeyRound className="h-4 w-4 mr-1" />
+                          )}
+                          Reset Pwd
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
