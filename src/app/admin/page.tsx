@@ -3,7 +3,7 @@
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
-import { Loader2, ShieldAlert, Flag, MessageSquareText, UserCog, Users, KeyRound, UserX, UserCheck, Ticket, FileText, Sigma } from 'lucide-react'; // Added Sigma for consistency if needed, Users for count
+import { Loader2, ShieldAlert, Flag, MessageSquareText, UserCog, Users, KeyRound, UserX, UserCheck, Ticket, FileText, Sigma } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { getFlaggedResponses, type FlaggedResponseLogWithId, getAllUserProfiles, type UserProfileWithId, adminSetUserAccountDisabledStatus, getSupportTickets, type SupportTicketLog } from '@/services/user-service';
@@ -30,7 +30,7 @@ export default function AdminDashboardPage() {
 
   const [flaggedResponses, setFlaggedResponses] = useState<FlaggedResponseLogWithId[]>([]);
   const [loadingFlags, setLoadingFlags] = useState(true);
-  const [usersList, setUsersList] = useState<UserProfileWithId[]>([]); // Renamed to avoid conflict with Users icon
+  const [usersList, setUsersList] = useState<UserProfileWithId[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [supportTickets, setSupportTickets] = useState<SupportTicketLog[]>([]);
   const [loadingSupportTickets, setLoadingSupportTickets] = useState(true);
@@ -145,7 +145,7 @@ export default function AdminDashboardPage() {
         title: `Account Status Updated`,
         description: `Account for ${targetUser.displayName || targetUser.email} has been ${statusNoun}. (DB flag updated)`,
       });
-      fetchAdminData();
+      fetchAdminData(); // Refresh data after toggling
     } catch (error: any) {
       console.error(`Error ${action.toLowerCase()} account:`, error);
       toast({
@@ -248,7 +248,7 @@ export default function AdminDashboardPage() {
             <h2 className="text-xl font-semibold text-card-foreground">Support Tickets</h2>
             <Ticket className="h-6 w-6 text-blue-600" />
           </div>
-          <p className="text-3xl font-bold text-blue-600">{loadingSupportTickets ? <Loader2 className="h-7 w-7 animate-spin" /> : supportTickets.length}</p>
+          <p className="text-3xl font-bold text-blue-600">{loadingSupportTickets ? <Loader2 className="h-7 w-7 animate-spin" /> : supportTickets.filter(ticket => ticket.supportId).length}</p>
           <p className="text-muted-foreground mb-4">Open Support Tickets</p>
           <Button variant="outline" asChild>
             <Link href="#support-tickets-section">View Tickets</Link>
@@ -408,14 +408,14 @@ export default function AdminDashboardPage() {
       <section id="support-tickets-section" className="mt-10 p-4 border rounded-lg shadow-sm bg-card">
         <div className="flex items-center gap-3 mb-6">
           <Ticket className="h-7 w-7 text-blue-600" />
-          <h2 className="text-2xl font-semibold text-card-foreground">Support Tickets ({supportTickets.length})</h2>
+          <h2 className="text-2xl font-semibold text-card-foreground">Support Tickets ({supportTickets.filter(ticket => ticket.supportId).length})</h2>
         </div>
         {loadingSupportTickets ? (
           <div className="flex items-center justify-center py-10">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
             <p className="ml-3 text-muted-foreground">Loading support tickets...</p>
           </div>
-        ) : supportTickets.length === 0 ? (
+        ) : supportTickets.filter(ticket => ticket.supportId).length === 0 ? (
           <p className="text-muted-foreground text-center py-10">No support tickets found.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -436,7 +436,7 @@ export default function AdminDashboardPage() {
                   const userForTicket = usersList.find(u => u.id === ticket.userId);
                   return (
                     <TableRow key={ticket.supportId}>
-                      <TableCell className="font-medium">{ticket.supportId}</TableCell>
+                      <TableCell className="font-medium truncate max-w-[100px]">{ticket.supportId}</TableCell>
                       <TableCell className="truncate max-w-[100px]">{ticket.userId}</TableCell>
                       <TableCell>{ticket.userDisplayName || 'N/A'}</TableCell>
                       <TableCell>
@@ -457,7 +457,7 @@ export default function AdminDashboardPage() {
                               toast({ variant: "destructive", title: "User Not Found", description: "Could not find user details for this ticket to reset password." });
                             }
                           }}
-                          disabled={!userForTicket?.email || isSendingResetEmailFor === ticket.userId}
+                          disabled={!userForTicket?.email || isSendingResetEmailFor === ticket.userId || togglingAccountStatusFor === ticket.userId}
                           title={!userForTicket?.email ? "User email not available" : "Send Password Reset Email"}
                         >
                           {isSendingResetEmailFor === ticket.userId ? (
@@ -471,7 +471,7 @@ export default function AdminDashboardPage() {
                           variant="ghost"
                           size="sm"
                           onClick={() => handleOpenCloseTicketDialog(ticket)}
-                          disabled={!userForTicket?.email}
+                          disabled={!userForTicket?.email || isSendingResetEmailFor === ticket.userId || togglingAccountStatusFor === ticket.userId}
                           title={!userForTicket?.email ? "Cannot close: User email not available" : "Close Support Ticket"}
                         >
                           <FileText className="h-4 w-4 mr-1" />
@@ -515,3 +515,5 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
+
+    
