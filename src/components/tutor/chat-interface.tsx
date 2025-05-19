@@ -16,6 +16,16 @@ import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Send, User, Bot, Loader2, Flag, Paperclip, XCircle } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type MessageAttachment = {
   name: string;
@@ -61,6 +71,10 @@ export default function ChatInterface() {
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
+  const [isFlagConfirmDialogOpen, setIsFlagConfirmDialogOpen] = useState(false);
+  const [flaggingMessageDetails, setFlaggingMessageDetails] = useState<{ messageId: string, messageContent: string } | null>(null);
+
+
   const currentCredits = userProfile?.credits;
   const hasSufficientCredits = userProfile?.isAdmin || (typeof currentCredits === 'number' && currentCredits > 0);
 
@@ -76,9 +90,9 @@ export default function ChatInterface() {
     }
   }, [messages, isAISending]);
 
-  // Effect to set initial greeting or clear messages based on user/context
+  // Effect to set initial greeting and clear messages based on user/context
   useEffect(() => {
-    if (profileLoading) return; // Wait for profile to load
+    if (profileLoading) return; 
 
     if (user) {
       const greetingContent = `Hello! I'm your AI Learning Assistant for ${subject} in ${language}. How can I assist you today?`;
@@ -90,10 +104,8 @@ export default function ChatInterface() {
       };
       setMessages([greetingMessage]);
     } else {
-      setMessages([]); // Clear messages if user logs out
+      setMessages([]); 
     }
-
-    // Clear any existing image selection when context changes
     if (imagePreviewUrl) {
         URL.revokeObjectURL(imagePreviewUrl);
         setImagePreviewUrl(null);
@@ -185,15 +197,13 @@ export default function ChatInterface() {
         attachment: studentAttachmentForUI,
     };
     setMessages(prevMessages => [...prevMessages, studentMessage]);
-    // Removed: saveChatMessage(user.uid, 'student', studentMessageContent, studentAttachmentForDB);
-    // Removed: saveUserQuestion call
-
+    
     const messageToSendToAI = currentMessage;
     setCurrentMessage('');
     clearSelectedFile();
 
     try {
-      const chatHistoryForAI = messages // Use current UI messages as history context for AI
+      const chatHistoryForAI = messages 
         .filter(msg => msg.role === 'student' || msg.role === 'tutor')
         .map(msg => ({ role: msg.role, content: msg.content }));
 
@@ -225,7 +235,6 @@ export default function ChatInterface() {
         timestamp: new Date().toISOString(),
       };
       setMessages(prevMessages => [...prevMessages, tutorResponse]);
-      // Removed: saveChatMessage(user.uid, 'tutor', result.tutorResponse);
 
     } catch (error: any) {
       console.error("Error with AI Tutor:", error);
@@ -239,27 +248,32 @@ export default function ChatInterface() {
           timestamp: new Date().toISOString(),
       };
       setMessages(prevMessages => [...prevMessages, errorResponse]);
-      // Removed: saveChatMessage(user.uid, 'tutor', errorResponse.content);
     } finally {
       setIsAISending(false);
     }
   };
 
-  const handleFlagMessage = async (messageId: string, messageContent: string) => {
-    if (!user) {
-      toast({ variant: "destructive", title: "Error", description: "You must be logged in to flag a response." });
+  const openFlagConfirmationDialog = (messageId: string, messageContent: string) => {
+    setFlaggingMessageDetails({ messageId, messageContent });
+    setIsFlagConfirmDialogOpen(true);
+  };
+
+  const confirmFlagMessage = async () => {
+    if (!user || !flaggingMessageDetails) {
+      toast({ variant: "destructive", title: "Error", description: "Cannot flag response. User or message details missing." });
+      setIsFlagConfirmDialogOpen(false);
+      setFlaggingMessageDetails(null);
       return;
     }
     try {
       const userDisplayName = userProfile?.displayName || user.displayName || null;
-      // Snapshot the current UI messages as context for the flag
       const chatHistorySnapshot = messages.map(m => ({ role: m.role, content: m.content }));
 
       await saveFlaggedResponse(
         user.uid,
         userDisplayName,
-        messageId,
-        messageContent,
+        flaggingMessageDetails.messageId,
+        flaggingMessageDetails.messageContent,
         subject,
         language,
         chatHistorySnapshot
@@ -268,8 +282,12 @@ export default function ChatInterface() {
     } catch (error) {
       console.error("Failed to flag response:", error);
       toast({ variant: "destructive", title: "Flagging Failed", description: "Could not submit feedback." });
+    } finally {
+      setIsFlagConfirmDialogOpen(false);
+      setFlaggingMessageDetails(null);
     }
   };
+
 
   let placeholderText = "Ask a question or request an explanation...";
   if (profileLoading) {
@@ -280,6 +298,7 @@ export default function ChatInterface() {
 
 
   return (
+    <>
     <Card className="w-full shadow-xl flex flex-col flex-grow">
       <CardContent className="p-0 flex-grow flex flex-col">
         <ScrollArea className="flex-grow w-full p-4" ref={scrollAreaRef}>
@@ -340,7 +359,7 @@ export default function ChatInterface() {
                       variant="ghost"
                       size="icon"
                       className="ml-1 h-7 w-7 p-1 opacity-50 hover:opacity-100"
-                      onClick={() => handleFlagMessage(msg.id, msg.content)}
+                      onClick={() => openFlagConfirmationDialog(msg.id, msg.content)}
                       disabled={isAISending}
                     >
                       <Flag className="h-4 w-4" />
@@ -416,5 +435,26 @@ export default function ChatInterface() {
         </form>
       </CardFooter>
     </Card>
+
+    {flaggingMessageDetails && (
+        <AlertDialog open={isFlagConfirmDialogOpen} onOpenChange={setIsFlagConfirmDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirm Flagging</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to flag this AI response as incorrect or problematic?
+                This will submit the response and current chat context for review.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setFlaggingMessageDetails(null)}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmFlagMessage}>Confirm Flag</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+    </>
   );
 }
+
+    
