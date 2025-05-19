@@ -1,26 +1,23 @@
 
 "use client"
 
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer } from "recharts"
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer, Line, LineChart } from "recharts"
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-  ChartLegend,
-  ChartLegendContent,
   type ChartConfig,
 } from "@/components/ui/chart"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface ChartDataItem {
   name: string; // Corresponds to label (e.g., on X-axis)
-  value: number; // Corresponds to the data value (e.g., bar height)
-  // Potentially other series if the AI provides more complex data
+  value: number; // Corresponds to the data value (e.g., bar height, line point)
   [key: string]: any; 
 }
 
 interface DynamicChartRendererProps {
-  chartType: "bar" | "line" | "pie"; // Extend as needed
+  chartType: "bar" | "line" | "pie";
   chartData: ChartDataItem[];
 }
 
@@ -29,40 +26,36 @@ export default function DynamicChartRenderer({ chartType, chartData }: DynamicCh
     return <p className="text-sm text-muted-foreground italic my-2">No data available for the chart.</p>;
   }
 
-  // For now, we'll focus on a simple bar chart where 'value' is the key for data.
-  // We can make this more dynamic if the AI starts providing multiple series.
   const dataKey = "value"; 
   const chartConfig: ChartConfig = {
     [dataKey]: {
-      label: "Value", // This can be made dynamic if AI provides series names
+      label: "Value", 
       color: "hsl(var(--chart-1))",
     },
   };
 
   if (chartType === "bar") {
     return (
-      <Card className="my-4">
+      <Card className="my-4 shadow-md rounded-lg">
         <CardHeader>
-          <CardTitle>Chart</CardTitle>
+          <CardTitle>Bar Chart</CardTitle>
           <CardDescription>Visual representation of the data.</CardDescription>
         </CardHeader>
         <CardContent>
           <ChartContainer config={chartConfig} className="min-h-[200px] w-full max-w-lg mx-auto">
-            <BarChart accessibilityLayer data={chartData} margin={{ top: 5, right: 20, left: -20, bottom: 5 }}>
-              <CartesianGrid vertical={false} />
+            <BarChart accessibilityLayer data={chartData} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
+              <CartesianGrid vertical={false} strokeDasharray="3 3" />
               <XAxis
                 dataKey="name"
                 tickLine={false}
                 tickMargin={10}
                 axisLine={false}
-                // interval={0} // show all labels
-                // angle={-30} // angle labels if too many
-                // textAnchor="end" // align angled labels
               />
               <YAxis 
                 tickLine={false}
                 axisLine={false}
                 tickMargin={10}
+                allowDecimals={false}
               />
               <ChartTooltip
                 cursor={false}
@@ -76,13 +69,52 @@ export default function DynamicChartRenderer({ chartType, chartData }: DynamicCh
     );
   }
 
-  // Placeholder for other chart types
   if (chartType === "line") {
-    return <p className="text-sm text-muted-foreground italic my-2">Line chart rendering is not yet implemented.</p>;
-  }
-  if (chartType === "pie") {
-    return <p className="text-sm text-muted-foreground italic my-2">Pie chart rendering is not yet implemented.</p>;
+    return (
+      <Card className="my-4 shadow-md rounded-lg">
+        <CardHeader>
+          <CardTitle>Line Chart</CardTitle>
+          <CardDescription>Visual representation of the data showing trends.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ChartContainer config={chartConfig} className="min-h-[200px] w-full max-w-lg mx-auto">
+            <LineChart accessibilityLayer data={chartData} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
+              <CartesianGrid vertical={false} strokeDasharray="3 3" />
+              <XAxis
+                dataKey="name"
+                tickLine={false}
+                tickMargin={10}
+                axisLine={false}
+              />
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                tickMargin={10}
+                allowDecimals={false}
+              />
+              <ChartTooltip
+                cursor={true}
+                content={<ChartTooltipContent hideLabel />}
+              />
+              <Line 
+                type="monotone" 
+                dataKey={dataKey} 
+                stroke={`var(--color-${dataKey})`} 
+                strokeWidth={2} 
+                dot={{ r: 4, fill: `var(--color-${dataKey})`, strokeWidth: 0 }} 
+                activeDot={{ r: 6, strokeWidth: 1, stroke: "hsl(var(--background))" }} 
+              />
+            </LineChart>
+          </ChartContainer>
+        </CardContent>
+      </Card>
+    );
   }
 
-  return <p className="text-sm text-muted-foreground italic my-2">Unsupported chart type: {chartType}</p>;
+  if (chartType === "pie") {
+    return <p className="text-sm text-muted-foreground italic my-2 p-3 border rounded-md bg-muted">Pie chart rendering is not yet implemented. The AI might provide data for it if you ask!</p>;
+  }
+
+  return <p className="text-sm text-muted-foreground italic my-2 p-3 border rounded-md bg-muted">Unsupported chart type: {chartType}</p>;
 }
+
