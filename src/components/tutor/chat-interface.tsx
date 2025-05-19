@@ -7,14 +7,14 @@ import { useSettings } from '@/hooks/use-settings';
 import { useAuth } from '@/hooks/use-auth';
 import { aiTutor } from '@/ai/flows/ai-tutor';
 import type { AiTutorInput, AiTutorOutput } from '@/ai/flows/ai-tutor';
-import { saveFlaggedResponse, saveAIResponseFeedback } from '@/services/user-service'; // Added saveAIResponseFeedback
-import type { AIResponseFeedbackLog } from '@/services/user-service'; // Added AIResponseFeedbackLog
+import { saveFlaggedResponse, saveAIResponseFeedback } from '@/services/user-service';
+import type { AIResponseFeedbackLog } from '@/services/user-service';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
-import { Send, User, Bot, Loader2, Flag, Paperclip, XCircle, ThumbsUp, ThumbsDown } from 'lucide-react'; // Added ThumbsUp, ThumbsDown
+import { Send, User, Bot, Loader2, Flag, Paperclip, XCircle, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -27,12 +27,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import DynamicChartRenderer from './dynamic-chart-renderer'; // Import the new chart renderer
 
 type MessageAttachment = {
   name: string;
-  previewUrl: string;
+  previewUrl: string; // For local preview before sending
   type: 'image';
+  // dataUri?: string; // Only for sending to AI, not stored in UI message state long-term
 };
+
+type ChartDataPoint = { name: string; value: number; [key: string]: any };
 
 type Message = {
   id: string;
@@ -40,6 +44,8 @@ type Message = {
   content: string;
   timestamp?: string;
   attachment?: MessageAttachment;
+  chartType?: "bar" | "line" | "pie";
+  chartData?: ChartDataPoint[];
 };
 
 const formatBoldText = (text: string) => {
@@ -81,13 +87,14 @@ export default function ChatInterface() {
   const hasSufficientCredits = userProfile?.isAdmin || (typeof currentCredits === 'number' && currentCredits > 0);
 
   const canSubmitMessage = !isAISending && !profileLoading && (currentMessage.trim() !== '' || !!selectedImageFile) && (userProfile?.isAdmin || hasSufficientCredits);
-
-  // Effect to set initial greeting and clear messages
+  
+  // Effect to set initial greeting and clear messages on context change
   useEffect(() => {
     if (profileLoading) return;
 
-    setMessages([]); // Clear messages on user, subject, or language change to start fresh.
-    setFeedbackGiven({}); // Reset feedback given status
+    // Reset messages and feedback for a new context
+    setMessages([]);
+    setFeedbackGiven({});
 
     if (user) {
       const greetingContent = `Hello! I'm your AI Learning Assistant for ${subject} in ${language}. How can I assist you today?`;
@@ -109,7 +116,7 @@ export default function ChatInterface() {
     setCurrentMessage('');
     if (fileInputRef.current) fileInputRef.current.value = "";
 
-  }, [user, subject, language, profileLoading]);
+  }, [user, subject, language, profileLoading]); // imagePreviewUrl removed to prevent loop
 
 
   useEffect(() => {
@@ -184,7 +191,7 @@ export default function ChatInterface() {
         studentAttachmentForUI = {
             name: selectedImageFile.name,
             type: 'image',
-            previewUrl: imagePreviewUrl!,
+            previewUrl: imagePreviewUrl!, // Image preview URL is already available
         }
       } catch (error) {
         console.error("Error converting file to data URI:", error);
@@ -206,11 +213,11 @@ export default function ChatInterface() {
 
     const messageToSendToAI = currentMessage;
     setCurrentMessage('');
-    clearSelectedFile();
+    clearSelectedFile(); // Clear selection after preparing the message
 
     try {
+      // Construct chat history for AI (excluding the latest student message which is sent separately)
       const chatHistoryForAI = messages
-        .filter(msg => msg.role === 'student' || msg.role === 'tutor')
         .map(msg => ({ role: msg.role, content: msg.content }));
 
       const input: AiTutorInput = {
@@ -225,7 +232,7 @@ export default function ChatInterface() {
 
       if (!userProfile?.isAdmin) {
         const creditDeducted = await deductCreditForAITutor();
-        if (!creditDeducted && result.tutorResponse) {
+        if (!creditDeducted && result.tutorResponse) { // Check if tutorResponse exists before complaining
             toast({
                 variant: "destructive",
                 title: "Credit Issue",
@@ -239,6 +246,8 @@ export default function ChatInterface() {
         role: 'tutor',
         content: result.tutorResponse,
         timestamp: new Date().toISOString(),
+        chartType: result.chartType,
+        chartData: result.chartData,
       };
       setMessages(prevMessages => [...prevMessages, tutorResponse]);
 
@@ -340,7 +349,7 @@ export default function ChatInterface() {
       <CardContent className="p-0 flex-grow flex flex-col">
         <ScrollArea className="flex-grow w-full p-4" ref={scrollAreaRef}>
         <TooltipProvider>
-          {profileLoading && messages.length === 0 && (
+          {profileLoading && messages.length === 0 && ( // Show loader if profile is loading and no messages yet
             <div className="flex justify-center items-center h-full">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
@@ -377,6 +386,7 @@ export default function ChatInterface() {
                       width={150}
                       height={150}
                       className="rounded-md object-cover"
+                      unoptimized // If previewUrl is a blob URL
                     />
                     <p className="text-xs mt-1 italic">{msg.attachment.name}</p>
                   </div>
@@ -385,6 +395,9 @@ export default function ChatInterface() {
                   className="text-sm whitespace-pre-wrap"
                   dangerouslySetInnerHTML={formatBoldText(msg.content)}
                 />
+                {msg.role === 'tutor' && msg.chartType && msg.chartData && msg.chartData.length > 0 && (
+                  <DynamicChartRenderer chartType={msg.chartType} chartData={msg.chartData} />
+                )}
               </div>
               {msg.role === 'student' && (
                  <Avatar className="h-8 w-8">
@@ -461,9 +474,16 @@ export default function ChatInterface() {
       <CardFooter className="p-4 border-t">
         {selectedImageFile && imagePreviewUrl && (
           <div className="mb-2 p-2 border rounded-md relative flex items-center gap-2 bg-muted">
-            <Image src={imagePreviewUrl} alt="Preview" width={40} height={40} className="rounded object-cover"/>
+            <Image 
+              src={imagePreviewUrl} 
+              alt="Preview" 
+              width={40} 
+              height={40} 
+              className="rounded object-cover"
+              unoptimized // If imagePreviewUrl is a blob URL
+            />
             <span className="text-sm truncate max-w-[150px]">{selectedImageFile.name}</span>
-            <Button variant="ghost" size="icon" className="h-6 w-6 ml-auto" onClick={clearSelectedFile}>
+            <Button variant="ghost" size="icon" className="h-6 w-6 ml-auto" onClick={clearSelectedFile} disabled={isAISending}>
               <XCircle className="h-4 w-4"/>
             </Button>
           </div>
@@ -482,6 +502,7 @@ export default function ChatInterface() {
             accept="image/*"
             className="hidden"
             id="file-upload-input"
+            disabled={isAISending}
           />
           <Button
             type="button"
@@ -528,3 +549,4 @@ export default function ChatInterface() {
     </>
   );
 }
+
