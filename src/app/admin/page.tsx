@@ -99,7 +99,9 @@ export default function AdminDashboardPage() {
         <div className="p-6 border rounded-lg shadow-lg bg-card">
           <h2 className="text-xl font-semibold mb-3 text-card-foreground">Content Moderation</h2>
           <p className="text-muted-foreground mb-4">Review flagged responses and content.</p>
-          <Button variant="outline" disabled>Review Flags (Coming Soon)</Button>
+          <Button variant="outline" asChild>
+            <Link href="#flagged-responses-section">Review Flags</Link>
+          </Button>
         </div>
 
         <div className="p-6 border rounded-lg shadow-lg bg-card">
@@ -109,7 +111,7 @@ export default function AdminDashboardPage() {
         </div>
       </section>
 
-      <section className="mt-10 p-4 border rounded-lg shadow-sm bg-card">
+      <section id="flagged-responses-section" className="mt-10 p-4 border rounded-lg shadow-sm bg-card">
         <div className="flex items-center gap-3 mb-6">
           <Flag className="h-7 w-7 text-destructive" />
           <h2 className="text-2xl font-semibold text-card-foreground">Flagged AI Responses</h2>
