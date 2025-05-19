@@ -375,6 +375,9 @@ export function loadChatHistory(
         messages.push({ id: childSnapshot.key!, ...childSnapshot.val() } as StoredChatMessage);
       });
     }
+    // Firebase Realtime DB timestamps are numbers (milliseconds since epoch) when retrieved.
+    // Sorting them numerically will give chronological order.
+    // The orderByChild('timestamp') in the query also helps ensure this.
     messages.sort((a, b) => (a.timestamp as number) - (b.timestamp as number));
     onMessagesLoaded(messages);
   }, (error) => {
@@ -382,8 +385,9 @@ export function loadChatHistory(
     onMessagesLoaded([]); 
   });
 
+  // Return an unsubscribe function
   return () => {
-    if (messagesRef) {
+    if (messagesRef) { // Check if messagesRef is defined
         off(messagesRef, 'value', listener);
     }
   };
@@ -418,4 +422,38 @@ export async function getSupportTickets(): Promise<SupportTicketLog[]> {
     console.error('Error fetching support tickets:', error);
     throw error;
   }
+}
+
+export async function deleteSupportTicket(supportId: string): Promise<void> {
+  if (!supportId) {
+    throw new Error("Support ID is required to delete a support ticket.");
+  }
+  const ticketRef = ref(database, `supportTickets/${supportId}`);
+  try {
+    await remove(ticketRef);
+    console.log(`Support ticket with ID ${supportId} deleted successfully.`);
+  } catch (error) {
+    console.error(`Error deleting support ticket with ID ${supportId}:`, error);
+    throw error;
+  }
+}
+
+// Simulated function for sending an email.
+// In a real app, this would trigger a backend function (e.g., Firebase Cloud Function).
+export async function sendSupportClosureEmailToUser(
+  userEmail: string,
+  supportId: string,
+  adminMessage: string
+): Promise<void> {
+  console.log(`SIMULATING EMAIL SEND:
+    To: ${userEmail}
+    Support Ticket ID: ${supportId}
+    Admin Message: ${adminMessage}
+    ---
+    In a real application, an actual email would be sent here via a backend service.
+  `);
+  // Simulate a short delay
+  await new Promise(resolve => setTimeout(resolve, 500));
+  // This function doesn't actually send an email, it just logs.
+  // In a real scenario, it might throw an error if the backend email service fails.
 }

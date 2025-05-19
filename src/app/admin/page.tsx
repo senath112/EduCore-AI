@@ -3,12 +3,13 @@
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
-import { Loader2, ShieldAlert, Flag, MessageSquareText, UserCog, Users, KeyRound, UserX, UserCheck, Ticket } from 'lucide-react';
+import { Loader2, ShieldAlert, Flag, MessageSquareText, UserCog, Users, KeyRound, UserX, UserCheck, Ticket, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { getFlaggedResponses, type FlaggedResponseLogWithId, getAllUserProfiles, type UserProfileWithId, adminSetUserAccountDisabledStatus, getSupportTickets, type SupportTicketLog } from '@/services/user-service';
 import EditUserDialog from '@/components/admin/edit-user-dialog';
 import ViewFlaggedResponseDialog from '@/components/admin/view-flagged-response-dialog';
+import CloseSupportTicketDialog from '@/components/admin/close-support-ticket-dialog'; // Import the new dialog
 import {
   Table,
   TableBody,
@@ -42,6 +43,10 @@ export default function AdminDashboardPage() {
 
   const [selectedFlagForView, setSelectedFlagForView] = useState<FlaggedResponseLogWithId | null>(null);
   const [isViewFlagDialogOpen, setIsViewFlagDialogOpen] = useState(false);
+
+  const [selectedTicketForClosure, setSelectedTicketForClosure] = useState<SupportTicketLog | null>(null);
+  const [isCloseTicketDialogOpen, setIsCloseTicketDialogOpen] = useState(false);
+
 
   const isLoading = loading || profileLoading;
 
@@ -163,6 +168,16 @@ export default function AdminDashboardPage() {
     setIsViewFlagDialogOpen(false); 
   };
 
+  const handleOpenCloseTicketDialog = (ticket: SupportTicketLog) => {
+    setSelectedTicketForClosure(ticket);
+    setIsCloseTicketDialogOpen(true);
+  };
+
+  const handleTicketClosedSuccess = () => {
+    fetchAdminData(); // Refresh support tickets list
+    setIsCloseTicketDialogOpen(false);
+  };
+
 
   if (isLoading) {
     return (
@@ -187,6 +202,12 @@ export default function AdminDashboardPage() {
       </div>
     );
   }
+
+  const getUserEmailById = (userId: string): string | null => {
+    const targetUser = users.find(u => u.id === userId);
+    return targetUser?.email || null;
+  };
+
 
   return (
     <div className="container mx-auto p-6 min-h-[calc(100vh-150px)]">
@@ -274,6 +295,7 @@ export default function AdminDashboardPage() {
                         size="sm" 
                         onClick={() => handleEditUserClick(u)} 
                         disabled={isSendingResetEmailFor === u.id || togglingAccountStatusFor === u.id}
+                        title="Edit User Details"
                       >
                         <UserCog className="h-4 w-4 mr-2" />
                         Edit
@@ -358,7 +380,7 @@ export default function AdminDashboardPage() {
                       {flag.flaggedMessageContent}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => handleViewFlagDetails(flag)}>
+                      <Button variant="ghost" size="sm" onClick={() => handleViewFlagDetails(flag)} title="View Flag Details">
                         <MessageSquareText className="h-4 w-4 mr-2" />
                         View Details
                       </Button>
@@ -412,7 +434,7 @@ export default function AdminDashboardPage() {
                         <Badge variant="secondary">{ticket.language}</Badge>
                       </TableCell>
                       <TableCell>{format(new Date(ticket.timestamp), 'PPp')}</TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right space-x-1">
                         <Button 
                           variant="ghost" 
                           size="sm" 
@@ -432,6 +454,16 @@ export default function AdminDashboardPage() {
                               <KeyRound className="h-4 w-4 mr-1" />
                           )}
                           Reset Pwd
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleOpenCloseTicketDialog(ticket)}
+                          disabled={!userForTicket?.email} // Disable if email is not found to send closure message
+                          title={!userForTicket?.email ? "Cannot close: User email not available" : "Close Support Ticket"}
+                        >
+                          <FileText className="h-4 w-4 mr-1" /> 
+                          Close Ticket
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -457,6 +489,15 @@ export default function AdminDashboardPage() {
           onOpenChange={setIsViewFlagDialogOpen}
           flaggedResponse={selectedFlagForView}
           onFlagActionCompleted={handleFlagActionCompleted}
+        />
+      )}
+      {selectedTicketForClosure && (
+        <CloseSupportTicketDialog
+          isOpen={isCloseTicketDialogOpen}
+          onOpenChange={setIsCloseTicketDialogOpen}
+          ticketData={selectedTicketForClosure}
+          userEmail={getUserEmailById(selectedTicketForClosure.userId)}
+          onTicketClosed={handleTicketClosedSuccess}
         />
       )}
     </div>
