@@ -7,7 +7,7 @@ import { useSettings } from '@/hooks/use-settings';
 import { useAuth } from '@/hooks/use-auth';
 import { aiTutor } from '@/ai/flows/ai-tutor';
 import type { AiTutorInput, AiTutorOutput } from '@/ai/flows/ai-tutor';
-import { saveChatMessage, type StoredChatMessageAttachment } from '@/services/user-service'; // Removed loadChatHistory and StoredChatMessage
+import { saveChatMessage, type StoredChatMessageAttachment } from '@/services/user-service'; 
 import { saveUserQuestion, saveFlaggedResponse } from '@/services/user-service';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -28,7 +28,7 @@ type Message = {
   id: string;
   role: 'student' | 'tutor';
   content: string;
-  timestamp?: string; // Kept for potential local display, but not primary for ordering
+  timestamp?: string; 
   attachment?: MessageAttachment;
 };
 
@@ -55,7 +55,6 @@ export default function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentMessage, setCurrentMessage] = useState('');
   const [isAISending, setIsAISending] = useState(false);
-  // Removed isHistoryLoading
 
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -64,10 +63,11 @@ export default function ChatInterface() {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const currentCredits = userProfile?.credits;
-  const hasSufficientCredits = typeof currentCredits === 'number' && currentCredits > 0;
+  const hasSufficientCredits = userProfile?.isAdmin || (typeof currentCredits === 'number' && currentCredits > 0);
 
-  // Adjusted canSubmitMessage to remove isHistoryLoading
-  const canSubmitMessage = !isAISending && !profileLoading && (currentMessage.trim() !== '' || !!selectedImageFile);
+
+  const canSubmitMessage = !isAISending && !profileLoading && (currentMessage.trim() !== '' || !!selectedImageFile) && (userProfile?.isAdmin || hasSufficientCredits);
+
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -78,8 +78,6 @@ export default function ChatInterface() {
     }
   }, [messages, isAISending]);
 
-  // Effect for sending the initial greeting based on context (user, subject, language)
-  // This effect now also clears messages to start a "new" UI session.
   useEffect(() => {
     if (!user) {
       setMessages([]);
@@ -91,20 +89,20 @@ export default function ChatInterface() {
       return;
     }
 
-    if (profileLoading) return; // Don't send greeting while profile (and credits) are loading
+    if (profileLoading) return; 
 
+    // Always start with a fresh greeting when context changes
     const greetingContent = `Hello! I'm your AI Learning Assistant for ${subject} in ${language}. How can I assist you today?`;
     const greetingMessage: Message = {
-      id: `greeting-${Date.now()}`,
+      id: `greeting-${Date.now()}-${Math.random()}`, // Ensure unique ID for greeting
       role: 'tutor',
       content: greetingContent,
       timestamp: new Date().toISOString(),
     };
 
-    setMessages([greetingMessage]); // Start new UI session with only the greeting
-    saveChatMessage(user.uid, 'tutor', greetingContent); // Log greeting to DB
+    setMessages([greetingMessage]); 
+    saveChatMessage(user.uid, 'tutor', greetingContent); 
 
-    // Cleanup object URL on context change if an image was selected but not sent
     if (imagePreviewUrl) {
         URL.revokeObjectURL(imagePreviewUrl);
         setImagePreviewUrl(null);
@@ -112,8 +110,7 @@ export default function ChatInterface() {
     setSelectedImageFile(null);
     setCurrentMessage('');
 
-
-  }, [user, subject, language, profileLoading]); // Rerun when user, subject, language, or profileLoading status changes
+  }, [user, subject, language, profileLoading]); 
 
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -162,7 +159,7 @@ export default function ChatInterface() {
       toast({ title: "Loading profile...", description: "Please wait."});
       return;
     }
-    if (!hasSufficientCredits) {
+    if (!userProfile?.isAdmin && !hasSufficientCredits) {
       toast({ variant: "destructive", title: "Out of Credits", description: "Please add more credits." });
       return;
     }
@@ -177,14 +174,14 @@ export default function ChatInterface() {
     if (selectedImageFile) {
       try {
         imageDataUriForAI = await convertFileToDataUri(selectedImageFile);
-        studentAttachmentForDB = { // For DB
+        studentAttachmentForDB = { 
           name: selectedImageFile.name,
           type: 'image',
         };
-        studentAttachmentForUI = { // For local UI state
+        studentAttachmentForUI = { 
             name: selectedImageFile.name,
             type: 'image',
-            previewUrl: imagePreviewUrl!, // Should exist if selectedImageFile exists
+            previewUrl: imagePreviewUrl!, 
         }
       } catch (error) {
         console.error("Error converting file to data URI:", error);
@@ -215,15 +212,13 @@ export default function ChatInterface() {
 
     const messageToSendToAI = currentMessage;
     setCurrentMessage('');
-    clearSelectedFile(); // Clears selectedImageFile and imagePreviewUrl
+    clearSelectedFile(); 
 
     try {
-      // Create chat history for AI from current local messages, excluding the latest student message just added.
       const chatHistoryForAI = messages
-        .filter(msg => msg.role === 'student' || msg.role === 'tutor') // Use existing messages state
+        .filter(msg => msg.role === 'student' || msg.role === 'tutor') 
         .map(msg => ({ role: msg.role, content: msg.content }));
-        // The latest student message is studentMessageContent, which is passed directly.
-
+        
       const input: AiTutorInput = {
         subject,
         language,
@@ -233,14 +228,16 @@ export default function ChatInterface() {
       };
 
       const result: AiTutorOutput = await aiTutor(input);
-      const creditDeducted = await deductCreditForAITutor();
-
-      if (!creditDeducted && result.tutorResponse) {
-        toast({
-            variant: "destructive",
-            title: "Credit Issue",
-            description: "Could not deduct credit. Your balance might be outdated.",
-        });
+      
+      if (!userProfile?.isAdmin) {
+        const creditDeducted = await deductCreditForAITutor();
+        if (!creditDeducted && result.tutorResponse) {
+            toast({
+                variant: "destructive",
+                title: "Credit Issue",
+                description: "Could not deduct credit. Your balance might be outdated.",
+            });
+        }
       }
       
       const tutorResponse: Message = {
@@ -277,14 +274,13 @@ export default function ChatInterface() {
     }
     try {
       const userDisplayName = userProfile?.displayName || user.displayName || null;
-      // Snapshot includes all currently displayed messages up to the one being flagged.
       const chatHistorySnapshot = messages.slice(0, messages.findIndex(m => m.id === messageId) + 1) 
                                       .map(m => ({ role: m.role, content: m.content }));
 
       await saveFlaggedResponse(
         user.uid,
         userDisplayName,
-        messageId, // Use the local message ID for flagging context
+        messageId, 
         messageContent,
         subject,
         language,
@@ -298,9 +294,9 @@ export default function ChatInterface() {
   };
 
   let placeholderText = "Ask a question or request an explanation...";
-  if (profileLoading) { // isHistoryLoading removed
+  if (profileLoading) { 
     placeholderText = "Loading profile & credits...";
-  } else if (!hasSufficientCredits && user) {
+  } else if (!userProfile?.isAdmin && !hasSufficientCredits && user) {
     placeholderText = "You are out of credits. Please add more.";
   }
 
@@ -310,14 +306,14 @@ export default function ChatInterface() {
       <CardContent className="p-0 flex-grow flex flex-col">
         <ScrollArea className="flex-grow w-full p-4" ref={scrollAreaRef}>
         <TooltipProvider>
-          {profileLoading && messages.length === 0 && ( // Simplified loading state check
+          {profileLoading && messages.length === 0 && ( 
             <div className="flex justify-center items-center h-full">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           )}
           {messages.map((msg) => (
             <div
-              key={msg.id} // Use local message ID
+              key={msg.id} 
               className={`flex items-start gap-3 mb-4 ${
                 msg.role === 'student' ? 'justify-end' : 'justify-start'
               }`}
@@ -346,7 +342,6 @@ export default function ChatInterface() {
                     <p className="text-xs mt-1 italic">{msg.attachment.name}</p>
                   </div>
                 )}
-                 {/* Removed block for historical attachments as we don't load them */}
                 <p
                   className="text-sm whitespace-pre-wrap"
                   dangerouslySetInnerHTML={formatBoldText(msg.content)}
@@ -358,7 +353,7 @@ export default function ChatInterface() {
                  </Avatar>
               )}
               {msg.role === 'tutor' &&
-                !msg.content.startsWith("Hello! I'm your AI Learning Assistant for") && // Don't allow flagging the greeting
+                !msg.content.startsWith("Hello! I'm your AI Learning Assistant for") && 
                 msg.content !== "I'm sorry, I encountered an error. Please try asking again." &&
                 (
                 <Tooltip>
@@ -424,7 +419,7 @@ export default function ChatInterface() {
             variant="ghost"
             size="icon"
             onClick={() => fileInputRef.current?.click()}
-            disabled={isAISending || profileLoading || (!hasSufficientCredits && !!user)} // isHistoryLoading removed
+            disabled={isAISending || profileLoading || (!userProfile?.isAdmin && !hasSufficientCredits && !!user)} 
             aria-label="Attach image"
           >
             <Paperclip className="h-5 w-5" />
@@ -435,9 +430,9 @@ export default function ChatInterface() {
             value={currentMessage}
             onChange={(e) => setCurrentMessage(e.target.value)}
             className="flex-grow"
-            disabled={isAISending || profileLoading || (!hasSufficientCredits && !!user)} // isHistoryLoading removed
+            disabled={isAISending || profileLoading || (!userProfile?.isAdmin && !hasSufficientCredits && !!user)}
           />
-          <Button type="submit" disabled={!canSubmitMessage || (!hasSufficientCredits && !!user)} size="icon" aria-label="Send message">
+          <Button type="submit" disabled={!canSubmitMessage} size="icon" aria-label="Send message">
             {isAISending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
         </form>

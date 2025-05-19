@@ -122,14 +122,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const deductCreditForAITutor = async (): Promise<boolean> => {
-    if (!user || userProfile === null || typeof userProfile.credits !== 'number') {
-      console.warn("Deduct credit called without user or profile or credits.");
+    if (!user || userProfile === null) {
+      console.warn("Deduct credit called without user or profile.");
       return false;
     }
-    if (userProfile.credits <= 0) {
+    
+    // Admins have unlimited credits - bypass deduction
+    if (userProfile.isAdmin) {
+      console.log("Admin user: credit deduction bypassed.");
+      return true;
+    }
+
+    if (typeof userProfile.credits !== 'number' || userProfile.credits <= 0) {
       console.log("User has no credits to deduct.");
       return false;
     }
+    
     const newCreditAmount = userProfile.credits - 1;
     try {
       await updateUserCredits(user.uid, newCreditAmount);
