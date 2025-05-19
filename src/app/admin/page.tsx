@@ -3,7 +3,7 @@
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
-import { Loader2, ShieldAlert, Flag, MessageSquareText, UserCog, Users } from 'lucide-react';
+import { Loader2, ShieldAlert, Flag, MessageSquareText, UserCog, Users, KeyRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { getFlaggedResponses, type FlaggedResponseLogWithId, getAllUserProfiles, type UserProfileWithId } from '@/services/user-service';
@@ -19,9 +19,10 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { sendPasswordResetEmail } from 'firebase/auth'; // Added import
 
 export default function AdminDashboardPage() {
-  const { user, userProfile, loading, profileLoading } = useAuth();
+  const { user, userProfile, loading, profileLoading, authInstance } = useAuth(); // Added authInstance
   const router = useRouter();
   const { toast } = useToast();
 
@@ -29,6 +30,7 @@ export default function AdminDashboardPage() {
   const [loadingFlags, setLoadingFlags] = useState(true);
   const [users, setUsers] = useState<UserProfileWithId[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
+  const [isSendingResetEmailFor, setIsSendingResetEmailFor] = useState<string | null>(null); // New state
 
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<UserProfileWithId | null>(null);
   const [isEditUserDialogOpen, setIsEditUserDialogOpen] = useState(false);
@@ -36,7 +38,7 @@ export default function AdminDashboardPage() {
   const isLoading = loading || profileLoading;
 
   const fetchAdminData = useCallback(async () => {
-    if (!userProfile?.isAdmin) return; // Ensure only admin fetches data
+    if (!userProfile?.isAdmin) return; 
     setLoadingFlags(true);
     setLoadingUsers(true);
     try {
@@ -75,7 +77,40 @@ export default function AdminDashboardPage() {
 
   const handleUserUpdateSuccess = () => {
     setIsEditUserDialogOpen(false);
-    fetchAdminData(); // Re-fetch data to show updated user list
+    fetchAdminData(); 
+  };
+
+  const handlePasswordReset = async (email: string | null, userId: string) => {
+    if (!email) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "User email is not available to send a password reset.",
+      });
+      return;
+    }
+    if (!authInstance) {
+       toast({ variant: "destructive", title: "Authentication Error", description: "Auth service not available." });
+       return;
+    }
+
+    setIsSendingResetEmailFor(userId);
+    try {
+      await sendPasswordResetEmail(authInstance, email);
+      toast({
+        title: "Password Reset Email Sent",
+        description: `An email has been sent to ${email} with instructions to reset their password.`,
+      });
+    } catch (error: any) {
+      console.error("Error sending password reset email:", error);
+      toast({
+        variant: "destructive",
+        title: "Failed to Send Email",
+        description: error.message || "Could not send password reset email.",
+      });
+    } finally {
+      setIsSendingResetEmailFor(null);
+    }
   };
 
 
@@ -175,10 +210,24 @@ export default function AdminDashboardPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>{u.lastUpdatedAt ? format(new Date(u.lastUpdatedAt), 'PPp') : 'N/A'}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => handleEditUserClick(u)}>
+                    <TableCell className="text-right space-x-1">
+                      <Button variant="ghost" size="sm" onClick={() => handleEditUserClick(u)} disabled={isSendingResetEmailFor === u.id}>
                         <UserCog className="h-4 w-4 mr-2" />
-                        View/Edit
+                        Edit
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => handlePasswordReset(u.email, u.id)}
+                        disabled={!u.email || isSendingResetEmailFor === u.id}
+                        title={!u.email ? "User email not available" : "Send Password Reset Email"}
+                      >
+                        {isSendingResetEmailFor === u.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                            <KeyRound className="h-4 w-4 mr-2" />
+                        )}
+                        Reset Pwd
                       </Button>
                     </TableCell>
                   </TableRow>
