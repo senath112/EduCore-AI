@@ -25,7 +25,7 @@ const iconMap: Record<string, LucideIcon> = {
 export default function SubjectSelector() {
   const { subject, setSubject } = useSettings();
 
-  const getIconForSelectedSubject = (iconName: string | undefined) => {
+  const getIconForSelectedSubjectListItem = (iconName: string | undefined) => {
     const IconComponent = iconName ? iconMap[iconName] : iconMap['BookOpen'];
     return <IconComponent className="mr-2 h-4 w-4" />;
   };
@@ -40,16 +40,14 @@ export default function SubjectSelector() {
         onValueChange={(value) => setSubject(value as Subject)}
       >
         <SelectTrigger id="subject-select" className="w-auto min-w-[170px] sm:min-w-[200px] h-9">
-           <div className="flex items-center">
-            {getIconForSelectedSubject(SUBJECTS.find(s => s.value === subject)?.iconName)}
-            <SelectValue placeholder="Select subject" />
-          </div>
+          {/* Icon removed from here to prevent duplication in the trigger */}
+          <SelectValue placeholder="Select subject" />
         </SelectTrigger>
         <SelectContent>
           {SUBJECTS.map((subj: SubjectDetails) => (
             <SelectItem key={subj.value} value={subj.value}>
               <div className="flex items-center">
-                {getIconForSelectedSubject(subj.iconName)}
+                {getIconForSelectedSubjectListItem(subj.iconName)}
                 {subj.label}
               </div>
             </SelectItem>
