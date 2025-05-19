@@ -7,13 +7,14 @@ import { useSettings } from '@/hooks/use-settings';
 import { useAuth } from '@/hooks/use-auth';
 import { aiTutor } from '@/ai/flows/ai-tutor';
 import type { AiTutorInput, AiTutorOutput } from '@/ai/flows/ai-tutor';
-import { saveFlaggedResponse } from '@/services/user-service';
+import { saveFlaggedResponse, saveAIResponseFeedback } from '@/services/user-service'; // Added saveAIResponseFeedback
+import type { AIResponseFeedbackLog } from '@/services/user-service'; // Added AIResponseFeedbackLog
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
-import { Send, User, Bot, Loader2, Flag, Paperclip, XCircle } from 'lucide-react';
+import { Send, User, Bot, Loader2, Flag, Paperclip, XCircle, ThumbsUp, ThumbsDown } from 'lucide-react'; // Added ThumbsUp, ThumbsDown
 import { useToast } from "@/hooks/use-toast";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -73,6 +74,7 @@ export default function ChatInterface() {
 
   const [isFlagConfirmDialogOpen, setIsFlagConfirmDialogOpen] = useState(false);
   const [flaggingMessageDetails, setFlaggingMessageDetails] = useState<{ messageId: string, messageContent: string } | null>(null);
+  const [feedbackGiven, setFeedbackGiven] = useState<Record<string, 'up' | 'down'>>({});
 
 
   const currentCredits = userProfile?.credits;
@@ -80,19 +82,12 @@ export default function ChatInterface() {
 
   const canSubmitMessage = !isAISending && !profileLoading && (currentMessage.trim() !== '' || !!selectedImageFile) && (userProfile?.isAdmin || hasSufficientCredits);
 
-
+  // Effect to set initial greeting and clear messages
   useEffect(() => {
-    if (scrollAreaRef.current) {
-      const scrollViewport = scrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
-      if (scrollViewport) {
-        scrollViewport.scrollTop = scrollViewport.scrollHeight;
-      }
-    }
-  }, [messages, isAISending]);
+    if (profileLoading) return;
 
-  // Effect to set initial greeting and clear messages based on user/context
-  useEffect(() => {
-    if (profileLoading) return; 
+    setMessages([]); // Clear messages on user, subject, or language change to start fresh.
+    setFeedbackGiven({}); // Reset feedback given status
 
     if (user) {
       const greetingContent = `Hello! I'm your AI Learning Assistant for ${subject} in ${language}. How can I assist you today?`;
@@ -103,17 +98,28 @@ export default function ChatInterface() {
         timestamp: new Date().toISOString(),
       };
       setMessages([greetingMessage]);
-    } else {
-      setMessages([]); 
     }
+
+    // Clear any pending file selection
     if (imagePreviewUrl) {
-        URL.revokeObjectURL(imagePreviewUrl);
-        setImagePreviewUrl(null);
-      }
+      URL.revokeObjectURL(imagePreviewUrl);
+      setImagePreviewUrl(null);
+    }
     setSelectedImageFile(null);
     setCurrentMessage('');
+    if (fileInputRef.current) fileInputRef.current.value = "";
 
   }, [user, subject, language, profileLoading]);
+
+
+  useEffect(() => {
+    if (scrollAreaRef.current) {
+      const scrollViewport = scrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
+      if (scrollViewport) {
+        scrollViewport.scrollTop = scrollViewport.scrollHeight;
+      }
+    }
+  }, [messages, isAISending]);
 
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -197,13 +203,13 @@ export default function ChatInterface() {
         attachment: studentAttachmentForUI,
     };
     setMessages(prevMessages => [...prevMessages, studentMessage]);
-    
+
     const messageToSendToAI = currentMessage;
     setCurrentMessage('');
     clearSelectedFile();
 
     try {
-      const chatHistoryForAI = messages 
+      const chatHistoryForAI = messages
         .filter(msg => msg.role === 'student' || msg.role === 'tutor')
         .map(msg => ({ role: msg.role, content: msg.content }));
 
@@ -288,6 +294,37 @@ export default function ChatInterface() {
     }
   };
 
+  const handleResponseFeedback = async (messageId: string, messageContent: string, feedbackType: 'up' | 'down') => {
+    if (!user) {
+      toast({ variant: "destructive", title: "Not Logged In", description: "You must be logged in to give feedback." });
+      return;
+    }
+    if (feedbackGiven[messageId]) {
+      toast({ title: "Feedback Already Submitted", description: "You've already provided feedback for this message." });
+      return;
+    }
+
+    const feedbackData: AIResponseFeedbackLog = {
+      userId: user.uid,
+      userDisplayName: userProfile?.displayName || user.displayName || "Anonymous",
+      messageId,
+      aiResponseContent: messageContent,
+      feedbackType,
+      subject,
+      language,
+      timestamp: new Date().toISOString(),
+    };
+
+    try {
+      await saveAIResponseFeedback(feedbackData);
+      setFeedbackGiven(prev => ({ ...prev, [messageId]: feedbackType }));
+      toast({ title: "Feedback Submitted", description: "Thank you for helping us improve!" });
+    } catch (error) {
+      console.error("Failed to save AI response feedback:", error);
+      toast({ variant: "destructive", title: "Feedback Error", description: "Could not submit your feedback." });
+    }
+  };
+
 
   let placeholderText = "Ask a question or request an explanation...";
   if (profileLoading) {
@@ -308,7 +345,12 @@ export default function ChatInterface() {
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           )}
-          {messages.map((msg) => (
+          {messages.map((msg) => {
+            const isInitialGreeting = msg.id.startsWith('greeting-');
+            const isErrorMessage = msg.content === "I'm sorry, I encountered an error. Please try asking again.";
+            const canShowFeedbackButtons = msg.role === 'tutor' && !isInitialGreeting && !isErrorMessage;
+
+            return (
             <div
               key={msg.id}
               className={`flex items-start gap-3 mb-4 ${
@@ -349,30 +391,60 @@ export default function ChatInterface() {
                    <AvatarFallback><User size={18}/></AvatarFallback>
                  </Avatar>
               )}
-              {msg.role === 'tutor' &&
-                !msg.content.startsWith("Hello! I'm your AI Learning Assistant for") &&
-                msg.content !== "I'm sorry, I encountered an error. Please try asking again." &&
-                (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="ml-1 h-7 w-7 p-1 opacity-50 hover:opacity-100"
-                      onClick={() => openFlagConfirmationDialog(msg.id, msg.content)}
-                      disabled={isAISending}
-                    >
-                      <Flag className="h-4 w-4" />
-                      <span className="sr-only">Flag this response</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Flag this response</p>
-                  </TooltipContent>
-                </Tooltip>
+              {msg.role === 'tutor' && !isInitialGreeting && !isErrorMessage && (
+                <div className="flex flex-col sm:flex-row items-center gap-0.5 self-center">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 p-1 opacity-50 hover:opacity-100"
+                        onClick={() => handleResponseFeedback(msg.id, msg.content, 'up')}
+                        disabled={!!feedbackGiven[msg.id] || isAISending}
+                      >
+                        <ThumbsUp className={`h-4 w-4 ${feedbackGiven[msg.id] === 'up' ? 'text-primary fill-primary' : ''}`} />
+                        <span className="sr-only">Helpful</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Helpful</p></TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 p-1 opacity-50 hover:opacity-100"
+                        onClick={() => handleResponseFeedback(msg.id, msg.content, 'down')}
+                        disabled={!!feedbackGiven[msg.id] || isAISending}
+                      >
+                        <ThumbsDown className={`h-4 w-4 ${feedbackGiven[msg.id] === 'down' ? 'text-destructive fill-destructive' : ''}`} />
+                        <span className="sr-only">Not Helpful</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent><p>Not Helpful</p></TooltipContent>
+                  </Tooltip>
+                   <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 p-1 opacity-50 hover:opacity-100"
+                        onClick={() => openFlagConfirmationDialog(msg.id, msg.content)}
+                        disabled={isAISending}
+                      >
+                        <Flag className="h-4 w-4" />
+                        <span className="sr-only">Flag this response</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Flag response for review</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
               )}
             </div>
-          ))}
+          );
+        })}
           </TooltipProvider>
           {isAISending && (
             <div className="flex items-start gap-3 mb-4 justify-start">
@@ -456,5 +528,3 @@ export default function ChatInterface() {
     </>
   );
 }
-
-    

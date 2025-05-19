@@ -18,14 +18,12 @@ export interface UserProfile {
   createdAt: string; // ISO string
   lastUpdatedAt?: string; // ISO string
   isAdmin?: boolean;
-  isAccountDisabled?: boolean; // New field
+  isAccountDisabled?: boolean;
 }
 
 export interface UserProfileWithId extends UserProfile {
   id: string;
 }
-
-// Removed UserQuestionLog interface
 
 export interface FlaggedResponseLog {
   timestamp: string; // ISO string
@@ -35,15 +33,24 @@ export interface FlaggedResponseLog {
   flaggedMessageContent: string;
   subject: string;
   language: string;
-  chatHistorySnapshot: Array<{ role: string; content: string }>; // This will now come from UI state
+  chatHistorySnapshot: Array<{ role: string; content: string }>;
 }
 
 export interface FlaggedResponseLogWithId extends FlaggedResponseLog {
   id: string;
 }
 
-// Removed StoredChatMessageAttachment interface
-// Removed StoredChatMessage interface
+export interface AIResponseFeedbackLog {
+  timestamp: string; // ISO string
+  userId: string;
+  userDisplayName: string | null;
+  messageId: string; // ID of the AI message that received feedback
+  aiResponseContent: string; // Content of the AI message
+  feedbackType: 'up' | 'down';
+  subject: string; // Subject context
+  language: string; // Language context
+}
+
 
 export interface SupportTicketLog {
   supportId: string;
@@ -79,7 +86,7 @@ export async function getAllUserProfiles(): Promise<UserProfileWithId[]> {
       return Object.keys(usersData).map(userId => ({
         id: userId,
         ...usersData[userId].profile,
-      })).filter(profile => profile.email); // Ensure only profiles exist
+      })).filter(profile => profile.email);
     }
     return [];
   } catch (error) {
@@ -220,7 +227,6 @@ export async function updateUserCredits(userId: string, newCreditAmount: number)
   }
 }
 
-// Removed saveUserQuestion function
 
 export async function saveFlaggedResponse(
   userId: string,
@@ -229,7 +235,7 @@ export async function saveFlaggedResponse(
   flaggedMessageContent: string,
   subject: string,
   language: string,
-  chatHistorySnapshot: Array<{ role: string; content: string }> // This will come from UI state
+  chatHistorySnapshot: Array<{ role: string; content: string }>
 ): Promise<void> {
   if (!userId || !flaggedMessageId || !flaggedMessageContent) {
     console.warn('Attempted to save flagged response with missing critical information.');
@@ -289,8 +295,21 @@ export async function deleteFlaggedResponse(flagId: string): Promise<void> {
   }
 }
 
-// Removed saveChatMessage function
-// Removed loadChatHistory function
+export async function saveAIResponseFeedback(feedbackData: AIResponseFeedbackLog): Promise<void> {
+  if (!feedbackData.userId || !feedbackData.messageId) {
+    console.warn('Attempted to save AI response feedback with missing critical information.');
+    return;
+  }
+  const feedbackRef = ref(database, 'aiResponseFeedback');
+  const newFeedbackEntryRef = push(feedbackRef);
+  try {
+    await set(newFeedbackEntryRef, feedbackData);
+  } catch (error) {
+    console.error(`Error saving AI response feedback for user: ${feedbackData.userId}:`, error);
+    throw error;
+  }
+}
+
 
 export async function saveSupportTicket(ticketData: SupportTicketLog): Promise<void> {
   if (!ticketData || !ticketData.supportId || !ticketData.userId) {
