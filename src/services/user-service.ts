@@ -25,12 +25,7 @@ export interface UserProfileWithId extends UserProfile {
   id: string;
 }
 
-export interface UserQuestionLog {
-  timestamp: string; // ISO string
-  userId: string;
-  userDisplayName: string | null;
-  questionContent: string;
-}
+// Removed UserQuestionLog interface
 
 export interface FlaggedResponseLog {
   timestamp: string; // ISO string
@@ -40,25 +35,15 @@ export interface FlaggedResponseLog {
   flaggedMessageContent: string;
   subject: string;
   language: string;
-  chatHistorySnapshot: Array<{ role: string; content: string }>;
+  chatHistorySnapshot: Array<{ role: string; content: string }>; // This will now come from UI state
 }
 
 export interface FlaggedResponseLogWithId extends FlaggedResponseLog {
   id: string;
 }
 
-export interface StoredChatMessageAttachment {
-  name: string;
-  type: 'image';
-}
-
-export interface StoredChatMessage {
-  id?: string;
-  role: 'student' | 'tutor';
-  content: string;
-  timestamp: string | object; // Can be serverTimestamp object before write
-  attachment?: StoredChatMessageAttachment;
-}
+// Removed StoredChatMessageAttachment interface
+// Removed StoredChatMessage interface
 
 export interface SupportTicketLog {
   supportId: string;
@@ -140,7 +125,7 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
     createdAt: existingProfile?.createdAt || now,
     lastUpdatedAt: now,
     isAdmin: typeof additionalData.isAdmin === 'boolean' ? additionalData.isAdmin : (existingProfile?.isAdmin || false),
-    isAccountDisabled: typeof additionalData.isAccountDisabled === 'boolean' ? additionalData.isAccountDisabled : (existingProfile?.isAccountDisabled || false), // Initialize/preserve
+    isAccountDisabled: typeof additionalData.isAccountDisabled === 'boolean' ? additionalData.isAccountDisabled : (existingProfile?.isAccountDisabled || false),
   };
 
   const cleanedProfileData = Object.fromEntries(
@@ -181,13 +166,13 @@ export async function adminUpdateUserProfile(
     phoneNumber: updates.phoneNumber !== undefined ? (updates.phoneNumber === "" ? null : updates.phoneNumber) : existingProfile.phoneNumber,
     credits: updates.credits !== undefined ? updates.credits : existingProfile.credits,
     isAdmin: typeof updates.isAdmin === 'boolean' ? updates.isAdmin : existingProfile.isAdmin,
-    isAccountDisabled: typeof updates.isAccountDisabled === 'boolean' ? updates.isAccountDisabled : existingProfile.isAccountDisabled, // Update isAccountDisabled
+    isAccountDisabled: typeof updates.isAccountDisabled === 'boolean' ? updates.isAccountDisabled : existingProfile.isAccountDisabled,
     lastUpdatedAt: now,
-    email: existingProfile.email, 
+    email: existingProfile.email,
     photoURL: existingProfile.photoURL,
     createdAt: existingProfile.createdAt,
   };
-  
+
   const cleanedUpdates = Object.fromEntries(
     Object.entries(updatedProfileData).filter(([, value]) => value !== undefined)
   ) as UserProfile;
@@ -203,16 +188,14 @@ export async function adminUpdateUserProfile(
 
 export async function adminSetUserAccountDisabledStatus(userId: string, isDisabled: boolean): Promise<void> {
   if (!userId) throw new Error("User ID is required to update account disabled status.");
-  
+
   const profileRef = ref(database, `users/${userId}/profile/isAccountDisabled`);
   const lastUpdatedRef = ref(database, `users/${userId}/profile/lastUpdatedAt`);
-  
+
   try {
     await set(profileRef, isDisabled);
     await set(lastUpdatedRef, new Date().toISOString());
     console.log(`User ${userId} account disabled status (DB flag) set to: ${isDisabled}. REMINDER: Implement backend function to update Firebase Auth user state.`);
-    // In a real application, you would now trigger a backend function:
-    // await callBackendFunction('setFirebaseUserDisabledStatus', { userId, isDisabled });
   } catch (error) {
     console.error(`Error setting account disabled status (DB flag) for user ${userId}:`, error);
     throw error;
@@ -237,28 +220,7 @@ export async function updateUserCredits(userId: string, newCreditAmount: number)
   }
 }
 
-export async function saveUserQuestion(
-  userId: string,
-  displayName: string | null | undefined,
-  questionContent: string
-): Promise<void> {
-  if (!userId || !questionContent.trim()) {
-    return;
-  }
-  const userQueriesHistoryRef = ref(database, `userQuestionLogs/${userId}/history`);
-  const newQuestionRef = push(userQueriesHistoryRef);
-  const questionLog: UserQuestionLog = {
-    timestamp: new Date().toISOString(),
-    userId: userId,
-    userDisplayName: displayName || null,
-    questionContent: questionContent,
-  };
-  try {
-    await set(newQuestionRef, questionLog);
-  } catch (error) {
-    console.error(`Error saving user question for userId: ${userId}:`, error);
-  }
-}
+// Removed saveUserQuestion function
 
 export async function saveFlaggedResponse(
   userId: string,
@@ -267,7 +229,7 @@ export async function saveFlaggedResponse(
   flaggedMessageContent: string,
   subject: string,
   language: string,
-  chatHistorySnapshot: Array<{ role: string; content: string }>
+  chatHistorySnapshot: Array<{ role: string; content: string }> // This will come from UI state
 ): Promise<void> {
   if (!userId || !flaggedMessageId || !flaggedMessageContent) {
     console.warn('Attempted to save flagged response with missing critical information.');
@@ -304,7 +266,7 @@ export async function getFlaggedResponses(): Promise<FlaggedResponseLogWithId[]>
           ...log,
           id,
         }))
-        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()); // Sort by newest first
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     }
     return [];
   } catch (error) {
@@ -327,71 +289,8 @@ export async function deleteFlaggedResponse(flagId: string): Promise<void> {
   }
 }
 
-
-export async function saveChatMessage(
-  userId: string,
-  role: 'student' | 'tutor',
-  content: string,
-  attachment?: StoredChatMessageAttachment
-): Promise<string | null> {
-  if (!userId) {
-    console.error("Cannot save chat message without userId.");
-    return null;
-  }
-  const messagesRef = ref(database, `userChatHistory/${userId}/messages`);
-  const newMessageRef = push(messagesRef);
-  const messageData: Omit<StoredChatMessage, 'id'> = {
-    role,
-    content,
-    timestamp: serverTimestamp(), 
-    ...(attachment && { attachment }),
-  };
-  try {
-    await set(newMessageRef, messageData);
-    return newMessageRef.key; // Return the generated key/ID
-  } catch (error) {
-    console.error(`Error saving chat message for user ${userId}:`, error);
-    return null;
-  }
-}
-
-// Function to listen for chat history updates
-// Returns an unsubscribe function
-export function loadChatHistory(
-  userId: string,
-  onMessagesLoaded: (messages: StoredChatMessage[]) => void
-): () => void {
-  if (!userId) {
-    onMessagesLoaded([]); 
-    return () => {};
-  }
-
-  const messagesRef = query(ref(database, `userChatHistory/${userId}/messages`), orderByChild('timestamp'));
-  
-  const listener = onValue(messagesRef, (snapshot) => {
-    const messages: StoredChatMessage[] = [];
-    if (snapshot.exists()) {
-      snapshot.forEach((childSnapshot) => {
-        messages.push({ id: childSnapshot.key!, ...childSnapshot.val() } as StoredChatMessage);
-      });
-    }
-    // Firebase Realtime DB timestamps are numbers (milliseconds since epoch) when retrieved.
-    // Sorting them numerically will give chronological order.
-    // The orderByChild('timestamp') in the query also helps ensure this.
-    messages.sort((a, b) => (a.timestamp as number) - (b.timestamp as number));
-    onMessagesLoaded(messages);
-  }, (error) => {
-    console.error("Error loading chat history:", error);
-    onMessagesLoaded([]); 
-  });
-
-  // Return an unsubscribe function
-  return () => {
-    if (messagesRef) { // Check if messagesRef is defined
-        off(messagesRef, 'value', listener);
-    }
-  };
-}
+// Removed saveChatMessage function
+// Removed loadChatHistory function
 
 export async function saveSupportTicket(ticketData: SupportTicketLog): Promise<void> {
   if (!ticketData || !ticketData.supportId || !ticketData.userId) {
@@ -413,9 +312,8 @@ export async function getSupportTickets(): Promise<SupportTicketLog[]> {
     const snapshot = await get(supportTicketsRef);
     if (snapshot.exists()) {
       const data: Record<string, SupportTicketLog> = snapshot.val();
-      // The key of each ticket object is already the supportId, so we can just extract the values
       return Object.values(data)
-        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()); // Sort by newest first
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     }
     return [];
   } catch (error) {
@@ -438,8 +336,6 @@ export async function deleteSupportTicket(supportId: string): Promise<void> {
   }
 }
 
-// Simulated function for sending an email.
-// In a real app, this would trigger a backend function (e.g., Firebase Cloud Function).
 export async function sendSupportClosureEmailToUser(
   userEmail: string,
   supportId: string,
@@ -452,8 +348,5 @@ export async function sendSupportClosureEmailToUser(
     ---
     In a real application, an actual email would be sent here via a backend service.
   `);
-  // Simulate a short delay
   await new Promise(resolve => setTimeout(resolve, 500));
-  // This function doesn't actually send an email, it just logs.
-  // In a real scenario, it might throw an error if the backend email service fails.
 }

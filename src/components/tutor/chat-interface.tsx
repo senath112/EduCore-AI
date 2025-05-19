@@ -7,8 +7,7 @@ import { useSettings } from '@/hooks/use-settings';
 import { useAuth } from '@/hooks/use-auth';
 import { aiTutor } from '@/ai/flows/ai-tutor';
 import type { AiTutorInput, AiTutorOutput } from '@/ai/flows/ai-tutor';
-import { saveChatMessage, type StoredChatMessageAttachment } from '@/services/user-service'; 
-import { saveUserQuestion, saveFlaggedResponse } from '@/services/user-service';
+import { saveFlaggedResponse } from '@/services/user-service';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -28,7 +27,7 @@ type Message = {
   id: string;
   role: 'student' | 'tutor';
   content: string;
-  timestamp?: string; 
+  timestamp?: string;
   attachment?: MessageAttachment;
 };
 
@@ -65,7 +64,6 @@ export default function ChatInterface() {
   const currentCredits = userProfile?.credits;
   const hasSufficientCredits = userProfile?.isAdmin || (typeof currentCredits === 'number' && currentCredits > 0);
 
-
   const canSubmitMessage = !isAISending && !profileLoading && (currentMessage.trim() !== '' || !!selectedImageFile) && (userProfile?.isAdmin || hasSufficientCredits);
 
 
@@ -78,31 +76,24 @@ export default function ChatInterface() {
     }
   }, [messages, isAISending]);
 
+  // Effect to set initial greeting or clear messages based on user/context
   useEffect(() => {
-    if (!user) {
-      setMessages([]);
-      if (imagePreviewUrl) {
-        URL.revokeObjectURL(imagePreviewUrl);
-        setImagePreviewUrl(null);
-      }
-      setSelectedImageFile(null);
-      return;
+    if (profileLoading) return; // Wait for profile to load
+
+    if (user) {
+      const greetingContent = `Hello! I'm your AI Learning Assistant for ${subject} in ${language}. How can I assist you today?`;
+      const greetingMessage: Message = {
+        id: `greeting-${Date.now()}-${Math.random()}`,
+        role: 'tutor',
+        content: greetingContent,
+        timestamp: new Date().toISOString(),
+      };
+      setMessages([greetingMessage]);
+    } else {
+      setMessages([]); // Clear messages if user logs out
     }
 
-    if (profileLoading) return; 
-
-    // Always start with a fresh greeting when context changes
-    const greetingContent = `Hello! I'm your AI Learning Assistant for ${subject} in ${language}. How can I assist you today?`;
-    const greetingMessage: Message = {
-      id: `greeting-${Date.now()}-${Math.random()}`, // Ensure unique ID for greeting
-      role: 'tutor',
-      content: greetingContent,
-      timestamp: new Date().toISOString(),
-    };
-
-    setMessages([greetingMessage]); 
-    saveChatMessage(user.uid, 'tutor', greetingContent); 
-
+    // Clear any existing image selection when context changes
     if (imagePreviewUrl) {
         URL.revokeObjectURL(imagePreviewUrl);
         setImagePreviewUrl(null);
@@ -110,7 +101,7 @@ export default function ChatInterface() {
     setSelectedImageFile(null);
     setCurrentMessage('');
 
-  }, [user, subject, language, profileLoading]); 
+  }, [user, subject, language, profileLoading]);
 
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -167,21 +158,15 @@ export default function ChatInterface() {
     setIsAISending(true);
 
     let imageDataUriForAI: string | undefined = undefined;
-    let studentAttachmentForDB: StoredChatMessageAttachment | undefined = undefined;
     let studentAttachmentForUI: MessageAttachment | undefined = undefined;
-
 
     if (selectedImageFile) {
       try {
         imageDataUriForAI = await convertFileToDataUri(selectedImageFile);
-        studentAttachmentForDB = { 
-          name: selectedImageFile.name,
-          type: 'image',
-        };
-        studentAttachmentForUI = { 
+        studentAttachmentForUI = {
             name: selectedImageFile.name,
             type: 'image',
-            previewUrl: imagePreviewUrl!, 
+            previewUrl: imagePreviewUrl!,
         }
       } catch (error) {
         console.error("Error converting file to data URI:", error);
@@ -200,25 +185,18 @@ export default function ChatInterface() {
         attachment: studentAttachmentForUI,
     };
     setMessages(prevMessages => [...prevMessages, studentMessage]);
-    await saveChatMessage(user.uid, 'student', studentMessageContent, studentAttachmentForDB);
-
-
-    try {
-      const userDisplayName = userProfile?.displayName || user.displayName || null;
-      await saveUserQuestion(user.uid, userDisplayName, studentMessageContent + (studentAttachmentForDB ? ` [Attached: ${studentAttachmentForDB.name}]` : ''));
-    } catch (error) {
-      console.error("Failed to save user question:", error);
-    }
+    // Removed: saveChatMessage(user.uid, 'student', studentMessageContent, studentAttachmentForDB);
+    // Removed: saveUserQuestion call
 
     const messageToSendToAI = currentMessage;
     setCurrentMessage('');
-    clearSelectedFile(); 
+    clearSelectedFile();
 
     try {
-      const chatHistoryForAI = messages
-        .filter(msg => msg.role === 'student' || msg.role === 'tutor') 
+      const chatHistoryForAI = messages // Use current UI messages as history context for AI
+        .filter(msg => msg.role === 'student' || msg.role === 'tutor')
         .map(msg => ({ role: msg.role, content: msg.content }));
-        
+
       const input: AiTutorInput = {
         subject,
         language,
@@ -228,7 +206,7 @@ export default function ChatInterface() {
       };
 
       const result: AiTutorOutput = await aiTutor(input);
-      
+
       if (!userProfile?.isAdmin) {
         const creditDeducted = await deductCreditForAITutor();
         if (!creditDeducted && result.tutorResponse) {
@@ -239,7 +217,7 @@ export default function ChatInterface() {
             });
         }
       }
-      
+
       const tutorResponse: Message = {
         id: `tutor-${Date.now()}-${Math.random()}`,
         role: 'tutor',
@@ -247,13 +225,13 @@ export default function ChatInterface() {
         timestamp: new Date().toISOString(),
       };
       setMessages(prevMessages => [...prevMessages, tutorResponse]);
-      await saveChatMessage(user.uid, 'tutor', result.tutorResponse);
+      // Removed: saveChatMessage(user.uid, 'tutor', result.tutorResponse);
 
     } catch (error: any) {
       console.error("Error with AI Tutor:", error);
       const errorMsg = error.message || "Failed to get response from AI Tutor. Please try again.";
       toast({ variant: "destructive", title: "AI Tutor Error", description: errorMsg });
-      
+
       const errorResponse: Message = {
           id: `tutor-error-${Date.now()}`,
           role: 'tutor',
@@ -261,7 +239,7 @@ export default function ChatInterface() {
           timestamp: new Date().toISOString(),
       };
       setMessages(prevMessages => [...prevMessages, errorResponse]);
-      await saveChatMessage(user.uid, 'tutor', errorResponse.content);
+      // Removed: saveChatMessage(user.uid, 'tutor', errorResponse.content);
     } finally {
       setIsAISending(false);
     }
@@ -274,13 +252,13 @@ export default function ChatInterface() {
     }
     try {
       const userDisplayName = userProfile?.displayName || user.displayName || null;
-      const chatHistorySnapshot = messages.slice(0, messages.findIndex(m => m.id === messageId) + 1) 
-                                      .map(m => ({ role: m.role, content: m.content }));
+      // Snapshot the current UI messages as context for the flag
+      const chatHistorySnapshot = messages.map(m => ({ role: m.role, content: m.content }));
 
       await saveFlaggedResponse(
         user.uid,
         userDisplayName,
-        messageId, 
+        messageId,
         messageContent,
         subject,
         language,
@@ -294,7 +272,7 @@ export default function ChatInterface() {
   };
 
   let placeholderText = "Ask a question or request an explanation...";
-  if (profileLoading) { 
+  if (profileLoading) {
     placeholderText = "Loading profile & credits...";
   } else if (!userProfile?.isAdmin && !hasSufficientCredits && user) {
     placeholderText = "You are out of credits. Please add more.";
@@ -306,14 +284,14 @@ export default function ChatInterface() {
       <CardContent className="p-0 flex-grow flex flex-col">
         <ScrollArea className="flex-grow w-full p-4" ref={scrollAreaRef}>
         <TooltipProvider>
-          {profileLoading && messages.length === 0 && ( 
+          {profileLoading && messages.length === 0 && (
             <div className="flex justify-center items-center h-full">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           )}
           {messages.map((msg) => (
             <div
-              key={msg.id} 
+              key={msg.id}
               className={`flex items-start gap-3 mb-4 ${
                 msg.role === 'student' ? 'justify-end' : 'justify-start'
               }`}
@@ -353,7 +331,7 @@ export default function ChatInterface() {
                  </Avatar>
               )}
               {msg.role === 'tutor' &&
-                !msg.content.startsWith("Hello! I'm your AI Learning Assistant for") && 
+                !msg.content.startsWith("Hello! I'm your AI Learning Assistant for") &&
                 msg.content !== "I'm sorry, I encountered an error. Please try asking again." &&
                 (
                 <Tooltip>
@@ -419,7 +397,7 @@ export default function ChatInterface() {
             variant="ghost"
             size="icon"
             onClick={() => fileInputRef.current?.click()}
-            disabled={isAISending || profileLoading || (!userProfile?.isAdmin && !hasSufficientCredits && !!user)} 
+            disabled={isAISending || profileLoading || (!userProfile?.isAdmin && !hasSufficientCredits && !!user)}
             aria-label="Attach image"
           >
             <Paperclip className="h-5 w-5" />
@@ -440,4 +418,3 @@ export default function ChatInterface() {
     </Card>
   );
 }
-
