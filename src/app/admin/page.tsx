@@ -3,11 +3,12 @@
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
-import { Loader2, ShieldAlert, Flag, MessageSquareText, UserCog, Users, KeyRound, UserX, UserCheck } from 'lucide-react'; // Added UserX, UserCheck
+import { Loader2, ShieldAlert, Flag, MessageSquareText, UserCog, Users, KeyRound, UserX, UserCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { getFlaggedResponses, type FlaggedResponseLogWithId, getAllUserProfiles, type UserProfileWithId, adminSetUserAccountDisabledStatus } from '@/services/user-service'; // Added adminSetUserAccountDisabledStatus
+import { getFlaggedResponses, type FlaggedResponseLogWithId, getAllUserProfiles, type UserProfileWithId, adminSetUserAccountDisabledStatus } from '@/services/user-service';
 import EditUserDialog from '@/components/admin/edit-user-dialog';
+import ViewFlaggedResponseDialog from '@/components/admin/view-flagged-response-dialog'; // New import
 import {
   Table,
   TableBody,
@@ -31,10 +32,13 @@ export default function AdminDashboardPage() {
   const [users, setUsers] = useState<UserProfileWithId[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [isSendingResetEmailFor, setIsSendingResetEmailFor] = useState<string | null>(null);
-  const [togglingAccountStatusFor, setTogglingAccountStatusFor] = useState<string | null>(null); // New state for disabling account
+  const [togglingAccountStatusFor, setTogglingAccountStatusFor] = useState<string | null>(null);
 
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<UserProfileWithId | null>(null);
   const [isEditUserDialogOpen, setIsEditUserDialogOpen] = useState(false);
+
+  const [selectedFlagForView, setSelectedFlagForView] = useState<FlaggedResponseLogWithId | null>(null); // New state
+  const [isViewFlagDialogOpen, setIsViewFlagDialogOpen] = useState(false); // New state
 
   const isLoading = loading || profileLoading;
 
@@ -138,6 +142,11 @@ export default function AdminDashboardPage() {
     } finally {
       setTogglingAccountStatusFor(null);
     }
+  };
+
+  const handleViewFlagDetails = (flag: FlaggedResponseLogWithId) => {
+    setSelectedFlagForView(flag);
+    setIsViewFlagDialogOpen(true);
   };
 
 
@@ -333,7 +342,7 @@ export default function AdminDashboardPage() {
                       {flag.flaggedMessageContent}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => alert(`Viewing details for flag ID: ${flag.id}\nFull message: ${flag.flaggedMessageContent}\n\nChat History:\n${flag.chatHistorySnapshot.map(m => `${m.role}: ${m.content}`).join('\n')}`)}>
+                      <Button variant="ghost" size="sm" onClick={() => handleViewFlagDetails(flag)}>
                         <MessageSquareText className="h-4 w-4 mr-2" />
                         View Details
                       </Button>
@@ -353,7 +362,13 @@ export default function AdminDashboardPage() {
           onUserUpdated={handleUserUpdateSuccess}
         />
       )}
+      {selectedFlagForView && (
+        <ViewFlaggedResponseDialog
+          isOpen={isViewFlagDialogOpen}
+          onOpenChange={setIsViewFlagDialogOpen}
+          flaggedResponse={selectedFlagForView}
+        />
+      )}
     </div>
   );
 }
-
