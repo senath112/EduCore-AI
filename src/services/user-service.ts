@@ -243,7 +243,6 @@ export async function saveUserQuestion(
   questionContent: string
 ): Promise<void> {
   if (!userId || !questionContent.trim()) {
-    // console.warn('Attempted to save question with missing userId or empty content.');
     return;
   }
   const userQueriesHistoryRef = ref(database, `userQuestionLogs/${userId}/history`);
@@ -363,9 +362,8 @@ export function loadChatHistory(
   onMessagesLoaded: (messages: StoredChatMessage[]) => void
 ): () => void {
   if (!userId) {
-    // console.warn("loadChatHistory called without userId.");
-    onMessagesLoaded([]); // Return empty if no user
-    return () => {}; // Return a no-op unsubscribe function
+    onMessagesLoaded([]); 
+    return () => {};
   }
 
   const messagesRef = query(ref(database, `userChatHistory/${userId}/messages`), orderByChild('timestamp'));
@@ -377,17 +375,13 @@ export function loadChatHistory(
         messages.push({ id: childSnapshot.key!, ...childSnapshot.val() } as StoredChatMessage);
       });
     }
-    // Sort by timestamp client-side if Firebase doesn't guarantee order perfectly for onValue
-    // For serverTimestamp, actual numeric values will be used for sorting
-    // Ensure timestamp is treated as number for sorting
     messages.sort((a, b) => (a.timestamp as number) - (b.timestamp as number));
     onMessagesLoaded(messages);
   }, (error) => {
     console.error("Error loading chat history:", error);
-    onMessagesLoaded([]); // Pass empty on error
+    onMessagesLoaded([]); 
   });
 
-  // Return the unsubscribe function
   return () => {
     if (messagesRef) {
         off(messagesRef, 'value', listener);
@@ -405,6 +399,23 @@ export async function saveSupportTicket(ticketData: SupportTicketLog): Promise<v
     console.log(`Support ticket ${ticketData.supportId} saved for user ${ticketData.userId}.`);
   } catch (error) {
     console.error(`Error saving support ticket ${ticketData.supportId}:`, error);
+    throw error;
+  }
+}
+
+export async function getSupportTickets(): Promise<SupportTicketLog[]> {
+  const supportTicketsRef = ref(database, 'supportTickets');
+  try {
+    const snapshot = await get(supportTicketsRef);
+    if (snapshot.exists()) {
+      const data: Record<string, SupportTicketLog> = snapshot.val();
+      // The key of each ticket object is already the supportId, so we can just extract the values
+      return Object.values(data)
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()); // Sort by newest first
+    }
+    return [];
+  } catch (error) {
+    console.error('Error fetching support tickets:', error);
     throw error;
   }
 }

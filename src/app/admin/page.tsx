@@ -3,10 +3,10 @@
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
-import { Loader2, ShieldAlert, Flag, MessageSquareText, UserCog, Users, KeyRound, UserX, UserCheck } from 'lucide-react';
+import { Loader2, ShieldAlert, Flag, MessageSquareText, UserCog, Users, KeyRound, UserX, UserCheck, Ticket } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { getFlaggedResponses, type FlaggedResponseLogWithId, getAllUserProfiles, type UserProfileWithId, adminSetUserAccountDisabledStatus } from '@/services/user-service';
+import { getFlaggedResponses, type FlaggedResponseLogWithId, getAllUserProfiles, type UserProfileWithId, adminSetUserAccountDisabledStatus, getSupportTickets, type SupportTicketLog } from '@/services/user-service';
 import EditUserDialog from '@/components/admin/edit-user-dialog';
 import ViewFlaggedResponseDialog from '@/components/admin/view-flagged-response-dialog';
 import {
@@ -31,6 +31,9 @@ export default function AdminDashboardPage() {
   const [loadingFlags, setLoadingFlags] = useState(true);
   const [users, setUsers] = useState<UserProfileWithId[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
+  const [supportTickets, setSupportTickets] = useState<SupportTicketLog[]>([]);
+  const [loadingSupportTickets, setLoadingSupportTickets] = useState(true);
+
   const [isSendingResetEmailFor, setIsSendingResetEmailFor] = useState<string | null>(null);
   const [togglingAccountStatusFor, setTogglingAccountStatusFor] = useState<string | null>(null);
 
@@ -46,11 +49,16 @@ export default function AdminDashboardPage() {
     if (!userProfile?.isAdmin) return; 
     setLoadingFlags(true);
     setLoadingUsers(true);
+    setLoadingSupportTickets(true);
     try {
-      const responses = await getFlaggedResponses();
+      const [responses, userProfiles, tickets] = await Promise.all([
+        getFlaggedResponses(),
+        getAllUserProfiles(),
+        getSupportTickets(),
+      ]);
       setFlaggedResponses(responses);
-      const userProfiles = await getAllUserProfiles();
       setUsers(userProfiles);
+      setSupportTickets(tickets);
     } catch (error) {
       console.error("Failed to fetch admin data:", error);
       toast({
@@ -61,6 +69,7 @@ export default function AdminDashboardPage() {
     } finally {
       setLoadingFlags(false);
       setLoadingUsers(false);
+      setLoadingSupportTickets(false);
     }
   }, [userProfile?.isAdmin, toast]);
 
@@ -150,8 +159,8 @@ export default function AdminDashboardPage() {
   };
 
   const handleFlagActionCompleted = () => {
-    fetchAdminData(); // Refresh the list of flagged responses
-    setIsViewFlagDialogOpen(false); // Close the dialog
+    fetchAdminData(); 
+    setIsViewFlagDialogOpen(false); 
   };
 
 
@@ -206,9 +215,11 @@ export default function AdminDashboardPage() {
         </div>
 
         <div className="p-6 border rounded-lg shadow-lg bg-card">
-          <h2 className="text-xl font-semibold mb-3 text-card-foreground">Analytics</h2>
-          <p className="text-muted-foreground mb-4">View application usage statistics.</p>
-          <Button variant="outline" disabled>View Analytics (Coming Soon)</Button>
+          <h2 className="text-xl font-semibold mb-3 text-card-foreground">Support Tickets</h2>
+          <p className="text-muted-foreground mb-4">View generated support tickets.</p>
+          <Button variant="outline" asChild>
+            <Link href="#support-tickets-section">View Tickets</Link>
+          </Button>
         </div>
       </section>
 
@@ -359,6 +370,53 @@ export default function AdminDashboardPage() {
           </div>
         )}
       </section>
+
+      <section id="support-tickets-section" className="mt-10 p-4 border rounded-lg shadow-sm bg-card">
+        <div className="flex items-center gap-3 mb-6">
+          <Ticket className="h-7 w-7 text-blue-600" />
+          <h2 className="text-2xl font-semibold text-card-foreground">Support Tickets</h2>
+        </div>
+        {loadingSupportTickets ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="ml-3 text-muted-foreground">Loading support tickets...</p>
+          </div>
+        ) : supportTickets.length === 0 ? (
+          <p className="text-muted-foreground text-center py-10">No support tickets found.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Support ID</TableHead>
+                  <TableHead>User ID</TableHead>
+                  <TableHead>User Name</TableHead>
+                  <TableHead>Subject</TableHead>
+                  <TableHead>Language</TableHead>
+                  <TableHead>Timestamp</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {supportTickets.map((ticket) => (
+                  <TableRow key={ticket.supportId}>
+                    <TableCell className="font-medium">{ticket.supportId}</TableCell>
+                    <TableCell className="truncate max-w-[100px]">{ticket.userId}</TableCell>
+                    <TableCell>{ticket.userDisplayName || 'N/A'}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{ticket.subject}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{ticket.language}</Badge>
+                    </TableCell>
+                    <TableCell>{format(new Date(ticket.timestamp), 'PPp')}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </section>
+
       {selectedUserForEdit && (
         <EditUserDialog
           isOpen={isEditUserDialogOpen}
