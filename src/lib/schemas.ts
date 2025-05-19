@@ -37,6 +37,7 @@ export const AdminEditUserFormSchema = z.object({
   phoneNumber: z.string().regex(/^\+?[0-9]{10,15}$/, { message: "Please enter a valid phone number (10-15 digits, optionally starting with +)." }).optional().or(z.literal('')), // Allow empty string to clear
   credits: z.coerce.number().min(0, { message: "Credits cannot be negative."}),
   isAdmin: z.boolean(),
+  isAccountDisabled: z.boolean(),
 }).transform(values => ({
     ...values,
     age: values.age === '' ? undefined : values.age,
@@ -46,3 +47,4 @@ export const AdminEditUserFormSchema = z.object({
 
 
 export type AdminEditUserFormValues = z.infer<typeof AdminEditUserFormSchema>;
+

@@ -18,6 +18,7 @@ export interface UserProfile {
   createdAt: string; // ISO string
   lastUpdatedAt?: string; // ISO string
   isAdmin?: boolean;
+  isAccountDisabled?: boolean; // New field
 }
 
 export interface UserProfileWithId extends UserProfile {
@@ -130,6 +131,7 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
     createdAt: existingProfile?.createdAt || now,
     lastUpdatedAt: now,
     isAdmin: typeof additionalData.isAdmin === 'boolean' ? additionalData.isAdmin : (existingProfile?.isAdmin || false),
+    isAccountDisabled: typeof additionalData.isAccountDisabled === 'boolean' ? additionalData.isAccountDisabled : (existingProfile?.isAccountDisabled || false), // Initialize/preserve
   };
 
   const cleanedProfileData = Object.fromEntries(
@@ -148,7 +150,7 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
 
 export async function adminUpdateUserProfile(
   targetUserId: string,
-  updates: Partial<Pick<UserProfile, 'displayName' | 'age' | 'alFacingYear' | 'phoneNumber' | 'credits' | 'isAdmin'>>
+  updates: Partial<Pick<UserProfile, 'displayName' | 'age' | 'alFacingYear' | 'phoneNumber' | 'credits' | 'isAdmin' | 'isAccountDisabled'>>
 ): Promise<void> {
   if (!targetUserId) throw new Error("Target User ID is required for admin update.");
 
@@ -170,24 +172,40 @@ export async function adminUpdateUserProfile(
     phoneNumber: updates.phoneNumber !== undefined ? (updates.phoneNumber === "" ? null : updates.phoneNumber) : existingProfile.phoneNumber,
     credits: updates.credits !== undefined ? updates.credits : existingProfile.credits,
     isAdmin: typeof updates.isAdmin === 'boolean' ? updates.isAdmin : existingProfile.isAdmin,
+    isAccountDisabled: typeof updates.isAccountDisabled === 'boolean' ? updates.isAccountDisabled : existingProfile.isAccountDisabled, // Update isAccountDisabled
     lastUpdatedAt: now,
-    // Ensure email, photoURL, createdAt are preserved and not part of 'updates' from admin
     email: existingProfile.email, 
     photoURL: existingProfile.photoURL,
     createdAt: existingProfile.createdAt,
   };
   
-  // Clean undefined values before saving to Firebase
   const cleanedUpdates = Object.fromEntries(
     Object.entries(updatedProfileData).filter(([, value]) => value !== undefined)
   ) as UserProfile;
-
 
   try {
     await set(userProfileRef, cleanedUpdates);
     console.log(`Admin updated profile for UID: ${targetUserId}`);
   } catch (error) {
     console.error(`Error updating profile for UID ${targetUserId} by admin:`, error);
+    throw error;
+  }
+}
+
+export async function adminSetUserAccountDisabledStatus(userId: string, isDisabled: boolean): Promise<void> {
+  if (!userId) throw new Error("User ID is required to update account disabled status.");
+  
+  const profileRef = ref(database, `users/${userId}/profile/isAccountDisabled`);
+  const lastUpdatedRef = ref(database, `users/${userId}/profile/lastUpdatedAt`);
+  
+  try {
+    await set(profileRef, isDisabled);
+    await set(lastUpdatedRef, new Date().toISOString());
+    console.log(`User ${userId} account disabled status (DB flag) set to: ${isDisabled}. REMINDER: Implement backend function to update Firebase Auth user state.`);
+    // In a real application, you would now trigger a backend function:
+    // await callBackendFunction('setFirebaseUserDisabledStatus', { userId, isDisabled });
+  } catch (error) {
+    console.error(`Error setting account disabled status (DB flag) for user ${userId}:`, error);
     throw error;
   }
 }
@@ -348,3 +366,4 @@ export function loadChatHistory(
     off(messagesRef, 'value', listener);
   };
 }
+

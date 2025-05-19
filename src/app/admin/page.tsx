@@ -3,10 +3,10 @@
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
-import { Loader2, ShieldAlert, Flag, MessageSquareText, UserCog, Users, KeyRound } from 'lucide-react';
+import { Loader2, ShieldAlert, Flag, MessageSquareText, UserCog, Users, KeyRound, UserX, UserCheck } from 'lucide-react'; // Added UserX, UserCheck
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { getFlaggedResponses, type FlaggedResponseLogWithId, getAllUserProfiles, type UserProfileWithId } from '@/services/user-service';
+import { getFlaggedResponses, type FlaggedResponseLogWithId, getAllUserProfiles, type UserProfileWithId, adminSetUserAccountDisabledStatus } from '@/services/user-service'; // Added adminSetUserAccountDisabledStatus
 import EditUserDialog from '@/components/admin/edit-user-dialog';
 import {
   Table,
@@ -19,10 +19,10 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
-import { sendPasswordResetEmail } from 'firebase/auth'; // Added import
+import { sendPasswordResetEmail } from 'firebase/auth'; 
 
 export default function AdminDashboardPage() {
-  const { user, userProfile, loading, profileLoading, authInstance } = useAuth(); // Added authInstance
+  const { user, userProfile, loading, profileLoading, authInstance } = useAuth(); 
   const router = useRouter();
   const { toast } = useToast();
 
@@ -30,7 +30,8 @@ export default function AdminDashboardPage() {
   const [loadingFlags, setLoadingFlags] = useState(true);
   const [users, setUsers] = useState<UserProfileWithId[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
-  const [isSendingResetEmailFor, setIsSendingResetEmailFor] = useState<string | null>(null); // New state
+  const [isSendingResetEmailFor, setIsSendingResetEmailFor] = useState<string | null>(null);
+  const [togglingAccountStatusFor, setTogglingAccountStatusFor] = useState<string | null>(null); // New state for disabling account
 
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<UserProfileWithId | null>(null);
   const [isEditUserDialogOpen, setIsEditUserDialogOpen] = useState(false);
@@ -110,6 +111,32 @@ export default function AdminDashboardPage() {
       });
     } finally {
       setIsSendingResetEmailFor(null);
+    }
+  };
+
+  const handleToggleAccountStatus = async (targetUser: UserProfileWithId) => {
+    if (!targetUser) return;
+    const newDisabledStatus = !targetUser.isAccountDisabled;
+    const action = newDisabledStatus ? "Disabling" : "Enabling";
+    const statusNoun = newDisabledStatus ? "disabled" : "enabled";
+
+    setTogglingAccountStatusFor(targetUser.id);
+    try {
+      await adminSetUserAccountDisabledStatus(targetUser.id, newDisabledStatus);
+      toast({
+        title: `Account Status Updated`,
+        description: `Account for ${targetUser.displayName || targetUser.email} has been ${statusNoun}. (DB flag updated)`,
+      });
+      fetchAdminData(); // Refresh the user list
+    } catch (error: any) {
+      console.error(`Error ${action.toLowerCase()} account:`, error);
+      toast({
+        variant: "destructive",
+        title: `Failed to Update Status`,
+        description: `Could not update account status for ${targetUser.displayName || targetUser.email}.`,
+      });
+    } finally {
+      setTogglingAccountStatusFor(null);
     }
   };
 
@@ -193,6 +220,7 @@ export default function AdminDashboardPage() {
                   <TableHead>Email</TableHead>
                   <TableHead>Credits</TableHead>
                   <TableHead>Admin</TableHead>
+                  <TableHead>Status</TableHead> 
                   <TableHead>Last Updated</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -209,9 +237,19 @@ export default function AdminDashboardPage() {
                         {u.isAdmin ? 'Yes' : 'No'}
                       </Badge>
                     </TableCell>
+                    <TableCell>
+                      <Badge variant={u.isAccountDisabled ? "destructive" : "secondary"}>
+                        {u.isAccountDisabled ? 'Disabled' : 'Active'}
+                      </Badge>
+                    </TableCell>
                     <TableCell>{u.lastUpdatedAt ? format(new Date(u.lastUpdatedAt), 'PPp') : 'N/A'}</TableCell>
                     <TableCell className="text-right space-x-1">
-                      <Button variant="ghost" size="sm" onClick={() => handleEditUserClick(u)} disabled={isSendingResetEmailFor === u.id}>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => handleEditUserClick(u)} 
+                        disabled={isSendingResetEmailFor === u.id || togglingAccountStatusFor === u.id}
+                      >
                         <UserCog className="h-4 w-4 mr-2" />
                         Edit
                       </Button>
@@ -219,15 +257,31 @@ export default function AdminDashboardPage() {
                         variant="ghost" 
                         size="sm" 
                         onClick={() => handlePasswordReset(u.email, u.id)}
-                        disabled={!u.email || isSendingResetEmailFor === u.id}
+                        disabled={!u.email || isSendingResetEmailFor === u.id || togglingAccountStatusFor === u.id}
                         title={!u.email ? "User email not available" : "Send Password Reset Email"}
                       >
                         {isSendingResetEmailFor === u.id ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
-                            <KeyRound className="h-4 w-4 mr-2" />
+                            <KeyRound className="h-4 w-4 mr-1" />
                         )}
                         Reset Pwd
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleToggleAccountStatus(u)}
+                        disabled={togglingAccountStatusFor === u.id || isSendingResetEmailFor === u.id}
+                        title={u.isAccountDisabled ? "Enable Account (DB flag)" : "Disable Account (DB flag)"}
+                      >
+                        {togglingAccountStatusFor === u.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : u.isAccountDisabled ? (
+                          <UserCheck className="h-4 w-4 mr-1 text-green-600" /> 
+                        ) : (
+                          <UserX className="h-4 w-4 mr-1 text-red-600" />
+                        )}
+                        {u.isAccountDisabled ? 'Enable' : 'Disable'}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -302,3 +356,4 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
+

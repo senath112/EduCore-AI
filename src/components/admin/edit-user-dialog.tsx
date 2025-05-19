@@ -44,6 +44,7 @@ export default function EditUserDialog({ isOpen, onOpenChange, userToEdit, onUse
       phoneNumber: '',
       credits: 0,
       isAdmin: false,
+      isAccountDisabled: false, // Default for the new field
     },
   });
 
@@ -56,6 +57,7 @@ export default function EditUserDialog({ isOpen, onOpenChange, userToEdit, onUse
         phoneNumber: userToEdit.phoneNumber || '',
         credits: typeof userToEdit.credits === 'number' ? userToEdit.credits : 0,
         isAdmin: !!userToEdit.isAdmin,
+        isAccountDisabled: !!userToEdit.isAccountDisabled, // Populate from user data
       });
     }
   }, [userToEdit, isOpen, form]);
@@ -68,18 +70,19 @@ export default function EditUserDialog({ isOpen, onOpenChange, userToEdit, onUse
     setIsLoading(true);
 
     const updatePayload: Partial<UserProfileWithId> = {
-      displayName: values.displayName, // Will be handled by schema transform if empty
+      displayName: values.displayName, 
       age: values.age,
       alFacingYear: values.alFacingYear,
       phoneNumber: values.phoneNumber,
       credits: values.credits,
       isAdmin: values.isAdmin,
+      isAccountDisabled: values.isAccountDisabled, // Include in payload
     };
     
     try {
       await adminUpdateUserProfile(userToEdit.id, updatePayload);
       toast({ title: "User Updated", description: `${userToEdit.displayName || userToEdit.email}'s profile has been updated.` });
-      onUserUpdated(); // This will re-fetch users and close dialog via onOpenChange(false) in parent
+      onUserUpdated(); 
     } catch (error: any) {
       console.error("Error updating user profile by admin:", error);
       toast({ variant: "destructive", title: "Update Failed", description: error.message || "Could not update user profile." });
@@ -175,6 +178,28 @@ export default function EditUserDialog({ isOpen, onOpenChange, userToEdit, onUse
                     <FormLabel>Administrator Status</FormLabel>
                     <FormDescription>
                       Grant or revoke admin privileges for this user.
+                    </FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      disabled={isLoading}
+                      aria-readonly
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="isAccountDisabled"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm mt-2">
+                  <div className="space-y-0.5">
+                    <FormLabel>Account Disabled</FormLabel>
+                    <FormDescription>
+                      If checked, this account's access flag is set to disabled.
                     </FormDescription>
                   </div>
                   <FormControl>
