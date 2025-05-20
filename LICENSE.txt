@@ -1,0 +1,16 @@
+EduCore AI License
+Version 1.0 — 2025-05-15
+
+Copyright (c) 2025 Senath Sethmika
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the “Software”), to use,
+copy, modify, and distribute the Software **for personal, educational, or non-commercial use only**, subject to the following conditions:
+
+1. Commercial use of this Software is **strictly prohibited** without prior written permission from the author.
+2. Redistributions of source code must retain this copyright notice.
+3. Any modified versions must also be clearly marked as such and may not misrepresent the original source.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+
+Author Contact: senathsethmika@gmail.com
