@@ -44,7 +44,8 @@ export default function EditUserDialog({ isOpen, onOpenChange, userToEdit, onUse
       phoneNumber: '',
       credits: 0,
       isAdmin: false,
-      isAccountDisabled: false, // Default for the new field
+      isTeacher: false, // Default for the new field
+      isAccountDisabled: false,
     },
   });
 
@@ -57,7 +58,8 @@ export default function EditUserDialog({ isOpen, onOpenChange, userToEdit, onUse
         phoneNumber: userToEdit.phoneNumber || '',
         credits: typeof userToEdit.credits === 'number' ? userToEdit.credits : 0,
         isAdmin: !!userToEdit.isAdmin,
-        isAccountDisabled: !!userToEdit.isAccountDisabled, // Populate from user data
+        isTeacher: !!userToEdit.isTeacher, // Populate from user data
+        isAccountDisabled: !!userToEdit.isAccountDisabled,
       });
     }
   }, [userToEdit, isOpen, form]);
@@ -76,7 +78,8 @@ export default function EditUserDialog({ isOpen, onOpenChange, userToEdit, onUse
       phoneNumber: values.phoneNumber,
       credits: values.credits,
       isAdmin: values.isAdmin,
-      isAccountDisabled: values.isAccountDisabled, // Include in payload
+      isTeacher: values.isTeacher, // Include in payload
+      isAccountDisabled: values.isAccountDisabled,
     };
     
     try {
@@ -191,6 +194,28 @@ export default function EditUserDialog({ isOpen, onOpenChange, userToEdit, onUse
                 </FormItem>
               )}
             />
+             <FormField
+              control={form.control}
+              name="isTeacher"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm mt-2">
+                  <div className="space-y-0.5">
+                    <FormLabel>Teacher Status</FormLabel>
+                    <FormDescription>
+                      Grant or revoke teacher privileges for this user.
+                    </FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      disabled={isLoading}
+                      aria-readonly
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
             <FormField
               control={form.control}
               name="isAccountDisabled"
@@ -227,3 +252,5 @@ export default function EditUserDialog({ isOpen, onOpenChange, userToEdit, onUse
     </Dialog>
   );
 }
+
+    

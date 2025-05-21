@@ -19,7 +19,6 @@ type AuthContextType = {
   logout: () => Promise<void>;
   deductCreditForAITutor: () => Promise<boolean>;
   refreshUserProfile: () => Promise<void>;
-  handleAddCredits: (amount: number) => Promise<boolean>;
   promptForUserDetails: boolean;
   setPromptForUserDetails: (value: boolean) => void;
 };
@@ -66,8 +65,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
              // If a Google user has no profile and is NOT missing details (because there are no details),
              // we should still prompt.
              // The key is if profile itself is null, and it's a Google user, they might need to complete it.
-             // This logic can be refined. For now, if profile is null and it's a Google user,
-             // we can assume they need to complete it.
              setPromptForUserDetails(true);
            } else {
             setPromptForUserDetails(false);
@@ -127,9 +124,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return false;
     }
     
-    // Admins have unlimited credits - bypass deduction
-    if (userProfile.isAdmin) {
-      console.log("Admin user: credit deduction bypassed.");
+    // Admins and Teachers have unlimited credits - bypass deduction
+    if (userProfile.isAdmin || userProfile.isTeacher) {
+      console.log("Admin or Teacher user: credit deduction bypassed.");
       return true;
     }
 
@@ -155,44 +152,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user, fetchUserProfile]);
 
-  const handleAddCredits = async (amount: number): Promise<boolean> => {
-    if (!user || userProfile === null) { // Simpler check, credits can be 0
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "User profile not loaded. Cannot add credits.",
-      });
-      return false;
-    }
-    if (amount <= 0) {
-        toast({
-            variant: "destructive",
-            title: "Invalid Amount",
-            description: "Credit amount must be positive.",
-        });
-        return false;
-    }
-
-    const currentCredits = typeof userProfile.credits === 'number' ? userProfile.credits : 0;
-    const newCreditAmount = currentCredits + amount;
-    try {
-      await updateUserCredits(user.uid, newCreditAmount);
-      setUserProfile(prevProfile => prevProfile ? { ...prevProfile, credits: newCreditAmount, lastUpdatedAt: new Date().toISOString() } : null);
-      toast({
-        title: "Credits Added",
-        description: `${amount} credits have been successfully added to your account.`,
-      });
-      return true;
-    } catch (error) {
-      console.error("Failed to add credits:", error);
-      toast({
-        variant: "destructive",
-        title: "Error Adding Credits",
-        description: "Could not add credits to your account. Please try again.",
-      });
-      return false;
-    }
-  };
 
   if (loading) {
     return (
@@ -212,7 +171,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       deductCreditForAITutor,
       refreshUserProfile,
-      handleAddCredits,
       promptForUserDetails,
       setPromptForUserDetails
     }}>

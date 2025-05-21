@@ -37,6 +37,7 @@ export const AdminEditUserFormSchema = z.object({
   phoneNumber: z.string().regex(/^\+?[0-9]{10,15}$/, { message: "Please enter a valid phone number (10-15 digits, optionally starting with +)." }).optional().or(z.literal('')), // Allow empty string to clear
   credits: z.coerce.number().min(0, { message: "Credits cannot be negative."}),
   isAdmin: z.boolean(),
+  isTeacher: z.boolean(), // New field for teacher status
   isAccountDisabled: z.boolean(),
 }).transform(values => ({
     ...values,
@@ -48,3 +49,34 @@ export const AdminEditUserFormSchema = z.object({
 
 export type AdminEditUserFormValues = z.infer<typeof AdminEditUserFormSchema>;
 
+export const SupportRequestFormSchema = z.object({
+  comment: z.string().min(10, { message: "Please provide at least 10 characters in your comment." }).max(500, { message: "Comment cannot exceed 500 characters." }),
+});
+export type SupportRequestFormValues = z.infer<typeof SupportRequestFormSchema>;
+
+export const CreateClassFormSchema = z.object({
+  className: z.string().min(3, { message: "Class name must be at least 3 characters long." }).max(100, { message: "Class name cannot exceed 100 characters." }),
+  classDescription: z.string().min(10, { message: "Description must be at least 10 characters long." }).max(500, { message: "Description cannot exceed 500 characters." }),
+});
+
+export type CreateClassFormValues = z.infer<typeof CreateClassFormSchema>;
+
+export const GenerateVouchersFormSchema = z.object({
+  creditsPerVoucher: z.coerce.number().min(1, { message: "Credits must be at least 1." }).max(1000, { message: "Credits per voucher cannot exceed 1000."}),
+  numberOfVouchers: z.coerce.number().min(1, { message: "Number of vouchers must be at least 1." }).max(100, { message: "Cannot generate more than 100 vouchers at a time."}),
+});
+
+export type GenerateVouchersFormValues = z.infer<typeof GenerateVouchersFormSchema>;
+
+export const JoinClassSchema = z.object({
+  friendlyId: z.string().min(3, { message: "Class ID must be at least 3 characters." }).max(10, { message: "Class ID seems too long."}),
+});
+export type JoinClassFormValues = z.infer<typeof JoinClassSchema>;
+
+export const RedeemVoucherSchema = z.object({
+  voucherCode: z.string()
+    .length(8, { message: "Voucher code must be 8 characters." })
+    .regex(/^[A-Z0-9]{8}$/, { message: "Invalid voucher code format. Must be 8 uppercase letters/numbers." })
+    .transform((val) => val.toUpperCase()), // Ensure uppercase for consistency
+});
+export type RedeemVoucherFormValues = z.infer<typeof RedeemVoucherSchema>;

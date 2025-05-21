@@ -1,8 +1,9 @@
 
-import { ref, set, get, push, serverTimestamp, query, orderByChild, onValue, off, type DatabaseReference, remove } from 'firebase/database';
+import { ref, set, get, push, serverTimestamp, query, orderByChild, onValue, off, type DatabaseReference, update, remove } from 'firebase/database';
 import { getDatabase, type Database } from 'firebase/database';
 import { app } from '@/lib/firebase';
 import type { User } from 'firebase/auth';
+import { sanitizeFirebaseKey } from '@/lib/supportUtils';
 
 const DEFAULT_INITIAL_CREDITS = 10;
 const database: Database = getDatabase(app);
@@ -18,7 +19,9 @@ export interface UserProfile {
   createdAt: string; // ISO string
   lastUpdatedAt?: string; // ISO string
   isAdmin?: boolean;
+  isTeacher?: boolean; // New field for teacher role
   isAccountDisabled?: boolean;
+  enrolledClassIds?: Record<string, boolean>;
 }
 
 export interface UserProfileWithId extends UserProfile {
@@ -34,6 +37,8 @@ export interface FlaggedResponseLog {
   subject: string;
   language: string;
   chatHistorySnapshot: Array<{ role: string; content: string }>;
+  classContextId?: string;
+  associatedTeacherId?: string;
 }
 
 export interface FlaggedResponseLogWithId extends FlaggedResponseLog {
@@ -51,6 +56,7 @@ export interface AIResponseFeedbackLog {
   language: string; // Language context
 }
 
+export type SupportTicketStatus = 'Open' | 'In Progress' | 'Resolved';
 
 export interface SupportTicketLog {
   supportId: string;
@@ -58,7 +64,11 @@ export interface SupportTicketLog {
   userDisplayName: string | null;
   subject: string;
   language: string;
-  timestamp: string; // ISO string
+  timestamp: string; // ISO string of creation
+  userComment?: string;
+  status: SupportTicketStatus;
+  adminResolutionMessage?: string;
+  lastUpdatedAt?: string; // ISO string of last update (status change, resolution)
 }
 
 
@@ -86,7 +96,7 @@ export async function getAllUserProfiles(): Promise<UserProfileWithId[]> {
       return Object.keys(usersData).map(userId => ({
         id: userId,
         ...usersData[userId].profile,
-      })).filter(profile => profile.email);
+      })).filter(profile => profile.email); // Ensure profile has an email
     }
     return [];
   } catch (error) {
@@ -132,7 +142,9 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
     createdAt: existingProfile?.createdAt || now,
     lastUpdatedAt: now,
     isAdmin: typeof additionalData.isAdmin === 'boolean' ? additionalData.isAdmin : (existingProfile?.isAdmin || false),
+    isTeacher: typeof additionalData.isTeacher === 'boolean' ? additionalData.isTeacher : (existingProfile?.isTeacher || false), // Initialize isTeacher
     isAccountDisabled: typeof additionalData.isAccountDisabled === 'boolean' ? additionalData.isAccountDisabled : (existingProfile?.isAccountDisabled || false),
+    enrolledClassIds: additionalData.enrolledClassIds ?? existingProfile?.enrolledClassIds ?? {},
   };
 
   const cleanedProfileData = Object.fromEntries(
@@ -141,7 +153,7 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
 
   try {
     await set(userProfileRef, cleanedProfileData);
-    console.log('User data saved successfully for UID:', user.uid, 'Admin status:', cleanedProfileData.isAdmin);
+    console.log('User data saved successfully for UID:', user.uid, 'Admin status:', cleanedProfileData.isAdmin, 'Teacher status:', cleanedProfileData.isTeacher);
     return cleanedProfileData as UserProfile;
   } catch (error) {
     console.error('Error saving user data:', error);
@@ -151,7 +163,7 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
 
 export async function adminUpdateUserProfile(
   targetUserId: string,
-  updates: Partial<Pick<UserProfile, 'displayName' | 'age' | 'alFacingYear' | 'phoneNumber' | 'credits' | 'isAdmin' | 'isAccountDisabled'>>
+  updates: Partial<Pick<UserProfile, 'displayName' | 'age' | 'alFacingYear' | 'phoneNumber' | 'credits' | 'isAdmin' | 'isTeacher' | 'isAccountDisabled'>>
 ): Promise<void> {
   if (!targetUserId) throw new Error("Target User ID is required for admin update.");
 
@@ -173,11 +185,13 @@ export async function adminUpdateUserProfile(
     phoneNumber: updates.phoneNumber !== undefined ? (updates.phoneNumber === "" ? null : updates.phoneNumber) : existingProfile.phoneNumber,
     credits: updates.credits !== undefined ? updates.credits : existingProfile.credits,
     isAdmin: typeof updates.isAdmin === 'boolean' ? updates.isAdmin : existingProfile.isAdmin,
+    isTeacher: typeof updates.isTeacher === 'boolean' ? updates.isTeacher : existingProfile.isTeacher, // Handle isTeacher
     isAccountDisabled: typeof updates.isAccountDisabled === 'boolean' ? updates.isAccountDisabled : existingProfile.isAccountDisabled,
     lastUpdatedAt: now,
     email: existingProfile.email,
     photoURL: existingProfile.photoURL,
     createdAt: existingProfile.createdAt,
+    enrolledClassIds: existingProfile.enrolledClassIds,
   };
 
   const cleanedUpdates = Object.fromEntries(
@@ -196,12 +210,14 @@ export async function adminUpdateUserProfile(
 export async function adminSetUserAccountDisabledStatus(userId: string, isDisabled: boolean): Promise<void> {
   if (!userId) throw new Error("User ID is required to update account disabled status.");
 
-  const profileRef = ref(database, `users/${userId}/profile/isAccountDisabled`);
-  const lastUpdatedRef = ref(database, `users/${userId}/profile/lastUpdatedAt`);
+  const profileRef = ref(database, `users/${userId}/profile`);
+  const updates: Partial<UserProfile> = {
+    isAccountDisabled: isDisabled,
+    lastUpdatedAt: new Date().toISOString(),
+  };
 
   try {
-    await set(profileRef, isDisabled);
-    await set(lastUpdatedRef, new Date().toISOString());
+    await update(profileRef, updates);
     console.log(`User ${userId} account disabled status (DB flag) set to: ${isDisabled}. REMINDER: Implement backend function to update Firebase Auth user state.`);
   } catch (error) {
     console.error(`Error setting account disabled status (DB flag) for user ${userId}:`, error);
@@ -209,24 +225,24 @@ export async function adminSetUserAccountDisabledStatus(userId: string, isDisabl
   }
 }
 
-
 export async function updateUserCredits(userId: string, newCreditAmount: number): Promise<void> {
   if (!userId) throw new Error("User ID is required to update credits.");
   if (typeof newCreditAmount !== 'number' || newCreditAmount < 0) {
     throw new Error("Invalid credit amount.");
   }
-  const creditsRef = ref(database, `users/${userId}/profile/credits`);
-  const lastUpdatedRef = ref(database, `users/${userId}/profile/lastUpdatedAt`);
+  const profileRef = ref(database, `users/${userId}/profile`);
+   const updates: Partial<UserProfile> = {
+    credits: newCreditAmount,
+    lastUpdatedAt: new Date().toISOString(),
+  };
   try {
-    await set(creditsRef, newCreditAmount);
-    await set(lastUpdatedRef, new Date().toISOString());
+    await update(profileRef, updates);
     console.log(`Credits updated for user ${userId} to ${newCreditAmount}`);
   } catch (error) {
     console.error(`Error updating credits for user ${userId}:`, error);
     throw error;
   }
 }
-
 
 export async function saveFlaggedResponse(
   userId: string,
@@ -235,12 +251,29 @@ export async function saveFlaggedResponse(
   flaggedMessageContent: string,
   subject: string,
   language: string,
-  chatHistorySnapshot: Array<{ role: string; content: string }>
+  chatHistorySnapshot: Array<{ role: string; content: string }>,
+  classContextId?: string // Optional class context
 ): Promise<void> {
   if (!userId || !flaggedMessageId || !flaggedMessageContent) {
     console.warn('Attempted to save flagged response with missing critical information.');
     return;
   }
+
+  let associatedTeacherId: string | undefined = undefined;
+  if (classContextId) {
+    try {
+      const classRef = ref(database, `classes/${classContextId}`);
+      const classSnapshot = await get(classRef);
+      if (classSnapshot.exists()) {
+        const classData = classSnapshot.val();
+        associatedTeacherId = classData.teacherId;
+      }
+    } catch (err) {
+      console.error(`Error fetching teacherId for class ${classContextId}:`, err);
+    }
+  }
+
+
   const flaggedResponsesRef = ref(database, 'flaggedResponses');
   const newFlagRef = push(flaggedResponsesRef);
   const flaggedResponseLog: FlaggedResponseLog = {
@@ -252,6 +285,8 @@ export async function saveFlaggedResponse(
     subject,
     language,
     chatHistorySnapshot,
+    classContextId,
+    associatedTeacherId,
   };
   try {
     await set(newFlagRef, flaggedResponseLog);
@@ -310,14 +345,20 @@ export async function saveAIResponseFeedback(feedbackData: AIResponseFeedbackLog
   }
 }
 
-
-export async function saveSupportTicket(ticketData: SupportTicketLog): Promise<void> {
+export async function saveSupportTicket(ticketData: Omit<SupportTicketLog, 'status' | 'lastUpdatedAt'>): Promise<void> {
   if (!ticketData || !ticketData.supportId || !ticketData.userId) {
     throw new Error("Invalid support ticket data provided.");
   }
   const ticketRef = ref(database, `supportTickets/${ticketData.supportId}`);
+  const now = new Date().toISOString();
+  const fullTicketData: SupportTicketLog = {
+    ...ticketData,
+    status: 'Open',
+    timestamp: ticketData.timestamp || now, 
+    lastUpdatedAt: now,
+  };
   try {
-    await set(ticketRef, ticketData);
+    await set(ticketRef, fullTicketData);
     console.log(`Support ticket ${ticketData.supportId} saved for user ${ticketData.userId}.`);
   } catch (error) {
     console.error(`Error saving support ticket ${ticketData.supportId}:`, error);
@@ -341,19 +382,34 @@ export async function getSupportTickets(): Promise<SupportTicketLog[]> {
   }
 }
 
-export async function deleteSupportTicket(supportId: string): Promise<void> {
+export async function resolveSupportTicket(
+  supportId: string,
+  adminResolutionMessage: string,
+): Promise<void> {
   if (!supportId) {
-    throw new Error("Support ID is required to delete a support ticket.");
+    throw new Error("Support ID is required to resolve a ticket.");
   }
   const ticketRef = ref(database, `supportTickets/${supportId}`);
   try {
-    await remove(ticketRef);
-    console.log(`Support ticket with ID ${supportId} deleted successfully.`);
+    const snapshot = await get(ticketRef);
+    if (!snapshot.exists()) {
+      throw new Error(`Support ticket with ID ${supportId} not found.`);
+    }
+
+    const updates: Partial<SupportTicketLog> = {
+      status: 'Resolved',
+      adminResolutionMessage,
+      lastUpdatedAt: new Date().toISOString(),
+    };
+    await update(ticketRef, updates);
+    console.log(`Support ticket ${supportId} has been resolved.`);
+
   } catch (error) {
-    console.error(`Error deleting support ticket with ID ${supportId}:`, error);
+    console.error(`Error resolving support ticket ${supportId}:`, error);
     throw error;
   }
 }
+
 
 export async function sendSupportClosureEmailToUser(
   userEmail: string,
@@ -363,9 +419,46 @@ export async function sendSupportClosureEmailToUser(
   console.log(`SIMULATING EMAIL SEND:
     To: ${userEmail}
     Support Ticket ID: ${supportId}
-    Admin Message: ${adminMessage}
+    Admin Resolution Message: ${adminMessage}
+    Status: Resolved
     ---
     In a real application, an actual email would be sent here via a backend service.
   `);
   await new Promise(resolve => setTimeout(resolve, 500));
 }
+
+// Enroll in class
+export async function enrollInClass(userId: string, classId: string): Promise<void> {
+  if (!userId || !classId) {
+    throw new Error("User ID and Class ID are required to enroll.");
+  }
+  const userProfileRef = ref(database, `users/${userId}/profile/enrolledClassIds/${classId}`);
+  try {
+    await set(userProfileRef, true);
+    // Update lastUpdatedAt on the main profile
+    const profileUpdateRef = ref(database, `users/${userId}/profile`);
+    await update(profileUpdateRef, { lastUpdatedAt: new Date().toISOString() });
+  } catch (error) {
+    console.error(`Error enrolling user ${userId} in class ${classId}:`, error);
+    throw error;
+  }
+}
+
+// Leave class
+export async function leaveClass(userId: string, classId: string): Promise<void> {
+  if (!userId || !classId) {
+    throw new Error("User ID and Class ID are required to leave class.");
+  }
+  const userProfileRef = ref(database, `users/${userId}/profile/enrolledClassIds/${classId}`);
+  try {
+    await remove(userProfileRef);
+    // Update lastUpdatedAt on the main profile
+    const profileUpdateRef = ref(database, `users/${userId}/profile`);
+    await update(profileUpdateRef, { lastUpdatedAt: new Date().toISOString() });
+  } catch (error) {
+    console.error(`Error removing user ${userId} from class ${classId}:`, error);
+    throw error;
+  }
+}
+
+    

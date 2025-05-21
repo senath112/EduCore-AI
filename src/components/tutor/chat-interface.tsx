@@ -33,7 +33,6 @@ type MessageAttachment = {
   name: string;
   previewUrl: string; // For local preview before sending
   type: 'image';
-  // dataUri?: string; // Only for sending to AI, not stored in UI message state long-term
 };
 
 type ChartDataPoint = { name: string; value: number; [key: string]: any };
@@ -84,17 +83,15 @@ export default function ChatInterface() {
 
 
   const currentCredits = userProfile?.credits;
-  const hasSufficientCredits = userProfile?.isAdmin || (typeof currentCredits === 'number' && currentCredits > 0);
+  const hasSufficientCredits = userProfile?.isAdmin || userProfile?.isTeacher || (typeof currentCredits === 'number' && currentCredits > 0);
 
-  const canSubmitMessage = !isAISending && !profileLoading && (currentMessage.trim() !== '' || !!selectedImageFile) && (userProfile?.isAdmin || hasSufficientCredits);
+  const canSubmitMessage = !isAISending && !profileLoading && (currentMessage.trim() !== '' || !!selectedImageFile) && (userProfile?.isAdmin || userProfile?.isTeacher || hasSufficientCredits);
   
-  // Effect to set initial greeting and clear messages on context change
   useEffect(() => {
     if (profileLoading) return;
 
-    // Reset messages and feedback for a new context
-    setMessages([]);
-    setFeedbackGiven({});
+    setMessages([]); // Clear messages for new context
+    setFeedbackGiven({}); // Reset feedback
 
     if (user) {
       const greetingContent = `Hello! I'm your AI Learning Assistant for ${subject} in ${language}. How can I assist you today?`;
@@ -106,17 +103,17 @@ export default function ChatInterface() {
       };
       setMessages([greetingMessage]);
     }
-
+    
     // Clear any pending file selection
     if (imagePreviewUrl) {
-      URL.revokeObjectURL(imagePreviewUrl);
-      setImagePreviewUrl(null);
+        URL.revokeObjectURL(imagePreviewUrl);
+        setImagePreviewUrl(null);
     }
     setSelectedImageFile(null);
     setCurrentMessage('');
     if (fileInputRef.current) fileInputRef.current.value = "";
 
-  }, [user, subject, language, profileLoading]); // imagePreviewUrl removed to prevent loop
+  }, [user, subject, language, profileLoading]);
 
 
   useEffect(() => {
@@ -175,7 +172,7 @@ export default function ChatInterface() {
       toast({ title: "Loading profile...", description: "Please wait."});
       return;
     }
-    if (!userProfile?.isAdmin && !hasSufficientCredits) {
+    if (!userProfile?.isAdmin && !userProfile?.isTeacher && !hasSufficientCredits) {
       toast({ variant: "destructive", title: "Out of Credits", description: "Please add more credits." });
       return;
     }
@@ -191,7 +188,7 @@ export default function ChatInterface() {
         studentAttachmentForUI = {
             name: selectedImageFile.name,
             type: 'image',
-            previewUrl: imagePreviewUrl!, // Image preview URL is already available
+            previewUrl: imagePreviewUrl!, 
         }
       } catch (error) {
         console.error("Error converting file to data URI:", error);
@@ -213,10 +210,9 @@ export default function ChatInterface() {
 
     const messageToSendToAI = currentMessage;
     setCurrentMessage('');
-    clearSelectedFile(); // Clear selection after preparing the message
+    clearSelectedFile(); 
 
     try {
-      // Construct chat history for AI (excluding the latest student message which is sent separately)
       const chatHistoryForAI = messages
         .map(msg => ({ role: msg.role, content: msg.content }));
 
@@ -230,9 +226,9 @@ export default function ChatInterface() {
 
       const result: AiTutorOutput = await aiTutor(input);
 
-      if (!userProfile?.isAdmin) {
+      if (!userProfile?.isAdmin && !userProfile?.isTeacher) {
         const creditDeducted = await deductCreditForAITutor();
-        if (!creditDeducted && result.tutorResponse) { // Check if tutorResponse exists before complaining
+        if (!creditDeducted && result.tutorResponse) { 
             toast({
                 variant: "destructive",
                 title: "Credit Issue",
@@ -338,7 +334,7 @@ export default function ChatInterface() {
   let placeholderText = "Ask a question or request an explanation...";
   if (profileLoading) {
     placeholderText = "Loading profile & credits...";
-  } else if (!userProfile?.isAdmin && !hasSufficientCredits && user) {
+  } else if (!userProfile?.isAdmin && !userProfile?.isTeacher && !hasSufficientCredits && !!user) {
     placeholderText = "You are out of credits. Please add more.";
   }
 
@@ -349,7 +345,7 @@ export default function ChatInterface() {
       <CardContent className="p-0 flex-grow flex flex-col">
         <ScrollArea className="flex-grow w-full p-4" ref={scrollAreaRef}>
         <TooltipProvider>
-          {profileLoading && messages.length === 0 && ( // Show loader if profile is loading and no messages yet
+          {profileLoading && messages.length === 0 && ( 
             <div className="flex justify-center items-center h-full">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
@@ -386,7 +382,7 @@ export default function ChatInterface() {
                       width={150}
                       height={150}
                       className="rounded-md object-cover"
-                      unoptimized // If previewUrl is a blob URL
+                      unoptimized 
                     />
                     <p className="text-xs mt-1 italic">{msg.attachment.name}</p>
                   </div>
@@ -480,7 +476,7 @@ export default function ChatInterface() {
               width={40} 
               height={40} 
               className="rounded object-cover"
-              unoptimized // If imagePreviewUrl is a blob URL
+              unoptimized 
             />
             <span className="text-sm truncate max-w-[150px]">{selectedImageFile.name}</span>
             <Button variant="ghost" size="icon" className="h-6 w-6 ml-auto" onClick={clearSelectedFile} disabled={isAISending}>
@@ -509,7 +505,7 @@ export default function ChatInterface() {
             variant="ghost"
             size="icon"
             onClick={() => fileInputRef.current?.click()}
-            disabled={isAISending || profileLoading || (!userProfile?.isAdmin && !hasSufficientCredits && !!user)}
+            disabled={isAISending || profileLoading || (!userProfile?.isAdmin && !userProfile?.isTeacher && !hasSufficientCredits && !!user)}
             aria-label="Attach image"
           >
             <Paperclip className="h-5 w-5" />
@@ -520,7 +516,7 @@ export default function ChatInterface() {
             value={currentMessage}
             onChange={(e) => setCurrentMessage(e.target.value)}
             className="flex-grow"
-            disabled={isAISending || profileLoading || (!userProfile?.isAdmin && !hasSufficientCredits && !!user)}
+            disabled={isAISending || profileLoading || (!userProfile?.isAdmin && !userProfile?.isTeacher && !hasSufficientCredits && !!user)}
           />
           <Button type="submit" disabled={!canSubmitMessage} size="icon" aria-label="Send message">
             {isAISending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
@@ -549,4 +545,3 @@ export default function ChatInterface() {
     </>
   );
 }
-
