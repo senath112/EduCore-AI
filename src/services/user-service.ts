@@ -1,9 +1,11 @@
 
+// src/services/user-service.ts
 import { ref, set, get, push, serverTimestamp, query, orderByChild, onValue, off, type DatabaseReference, update, remove } from 'firebase/database';
-import { getDatabase, type Database } from 'firebase/database';
+import type { Database } from 'firebase/database';
+import { getDatabase } from 'firebase/database';
 import { app } from '@/lib/firebase';
 import type { User } from 'firebase/auth';
-import { sanitizeFirebaseKey } from '@/lib/supportUtils';
+// Removed sanitizeFirebaseKey as it's no longer used directly here for user question logs by name
 
 const DEFAULT_INITIAL_CREDITS = 10;
 const database: Database = getDatabase(app);
@@ -19,7 +21,7 @@ export interface UserProfile {
   createdAt: string; // ISO string
   lastUpdatedAt?: string; // ISO string
   isAdmin?: boolean;
-  isTeacher?: boolean; // New field for teacher role
+  isTeacher?: boolean;
   isAccountDisabled?: boolean;
   enrolledClassIds?: Record<string, boolean>;
 }
@@ -37,8 +39,6 @@ export interface FlaggedResponseLog {
   subject: string;
   language: string;
   chatHistorySnapshot: Array<{ role: string; content: string }>;
-  classContextId?: string;
-  associatedTeacherId?: string;
 }
 
 export interface FlaggedResponseLogWithId extends FlaggedResponseLog {
@@ -49,11 +49,11 @@ export interface AIResponseFeedbackLog {
   timestamp: string; // ISO string
   userId: string;
   userDisplayName: string | null;
-  messageId: string; // ID of the AI message that received feedback
-  aiResponseContent: string; // Content of the AI message
+  messageId: string;
+  aiResponseContent: string;
   feedbackType: 'up' | 'down';
-  subject: string; // Subject context
-  language: string; // Language context
+  subject: string;
+  language: string;
 }
 
 export type SupportTicketStatus = 'Open' | 'In Progress' | 'Resolved';
@@ -68,7 +68,7 @@ export interface SupportTicketLog {
   userComment?: string;
   status: SupportTicketStatus;
   adminResolutionMessage?: string;
-  lastUpdatedAt?: string; // ISO string of last update (status change, resolution)
+  lastUpdatedAt?: string; // ISO string of last update
 }
 
 
@@ -96,7 +96,7 @@ export async function getAllUserProfiles(): Promise<UserProfileWithId[]> {
       return Object.keys(usersData).map(userId => ({
         id: userId,
         ...usersData[userId].profile,
-      })).filter(profile => profile.email); // Ensure profile has an email
+      })).filter(profile => profile.email);
     }
     return [];
   } catch (error) {
@@ -142,7 +142,7 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
     createdAt: existingProfile?.createdAt || now,
     lastUpdatedAt: now,
     isAdmin: typeof additionalData.isAdmin === 'boolean' ? additionalData.isAdmin : (existingProfile?.isAdmin || false),
-    isTeacher: typeof additionalData.isTeacher === 'boolean' ? additionalData.isTeacher : (existingProfile?.isTeacher || false), // Initialize isTeacher
+    isTeacher: typeof additionalData.isTeacher === 'boolean' ? additionalData.isTeacher : (existingProfile?.isTeacher || false),
     isAccountDisabled: typeof additionalData.isAccountDisabled === 'boolean' ? additionalData.isAccountDisabled : (existingProfile?.isAccountDisabled || false),
     enrolledClassIds: additionalData.enrolledClassIds ?? existingProfile?.enrolledClassIds ?? {},
   };
@@ -153,7 +153,7 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
 
   try {
     await set(userProfileRef, cleanedProfileData);
-    console.log('User data saved successfully for UID:', user.uid, 'Admin status:', cleanedProfileData.isAdmin, 'Teacher status:', cleanedProfileData.isTeacher);
+    console.log('User data saved successfully for UID:', user.uid);
     return cleanedProfileData as UserProfile;
   } catch (error) {
     console.error('Error saving user data:', error);
@@ -185,7 +185,7 @@ export async function adminUpdateUserProfile(
     phoneNumber: updates.phoneNumber !== undefined ? (updates.phoneNumber === "" ? null : updates.phoneNumber) : existingProfile.phoneNumber,
     credits: updates.credits !== undefined ? updates.credits : existingProfile.credits,
     isAdmin: typeof updates.isAdmin === 'boolean' ? updates.isAdmin : existingProfile.isAdmin,
-    isTeacher: typeof updates.isTeacher === 'boolean' ? updates.isTeacher : existingProfile.isTeacher, // Handle isTeacher
+    isTeacher: typeof updates.isTeacher === 'boolean' ? updates.isTeacher : existingProfile.isTeacher,
     isAccountDisabled: typeof updates.isAccountDisabled === 'boolean' ? updates.isAccountDisabled : existingProfile.isAccountDisabled,
     lastUpdatedAt: now,
     email: existingProfile.email,
@@ -252,30 +252,25 @@ export async function saveFlaggedResponse(
   subject: string,
   language: string,
   chatHistorySnapshot: Array<{ role: string; content: string }>,
-  classContextId?: string // Optional class context
 ): Promise<void> {
+  console.log('Attempting to save flagged response. Details:', { userId, userDisplayName, flaggedMessageId, subject, language, hasChatHistory: chatHistorySnapshot && chatHistorySnapshot.length > 0 });
   if (!userId || !flaggedMessageId || !flaggedMessageContent) {
-    console.warn('Attempted to save flagged response with missing critical information.');
-    return;
+    const missingFields = [];
+    if (!userId) missingFields.push('User ID');
+    if (!flaggedMessageId) missingFields.push('Message ID');
+    if (!flaggedMessageContent) missingFields.push('Message Content');
+    const errorMessage = `Cannot save flag: Missing critical information (${missingFields.join(', ')}).`;
+    console.warn(errorMessage, { userId, flaggedMessageId, flaggedMessageContent });
+    throw new Error(errorMessage);
   }
-
-  let associatedTeacherId: string | undefined = undefined;
-  if (classContextId) {
-    try {
-      const classRef = ref(database, `classes/${classContextId}`);
-      const classSnapshot = await get(classRef);
-      if (classSnapshot.exists()) {
-        const classData = classSnapshot.val();
-        associatedTeacherId = classData.teacherId;
-      }
-    } catch (err) {
-      console.error(`Error fetching teacherId for class ${classContextId}:`, err);
-    }
-  }
-
 
   const flaggedResponsesRef = ref(database, 'flaggedResponses');
   const newFlagRef = push(flaggedResponsesRef);
+  if (!newFlagRef.key) {
+    console.error('Firebase Realtime Database failed to generate a push key for the new flagged response.');
+    throw new Error("Failed to generate a unique ID for the flagged response in the database.");
+  }
+
   const flaggedResponseLog: FlaggedResponseLog = {
     timestamp: new Date().toISOString(),
     userId,
@@ -285,14 +280,13 @@ export async function saveFlaggedResponse(
     subject,
     language,
     chatHistorySnapshot,
-    classContextId,
-    associatedTeacherId,
   };
   try {
     await set(newFlagRef, flaggedResponseLog);
+    console.log(`Flagged response ${newFlagRef.key} saved successfully for user: ${userId}`);
   } catch (error) {
-    console.error(`Error saving flagged response for user: ${userId}:`, error);
-    throw error;
+    console.error(`Error saving flagged response (ID: ${newFlagRef.key}) for user: ${userId} to Firebase. Error:`, error);
+    throw error; // Re-throw the error to be caught by the UI
   }
 }
 
@@ -354,7 +348,7 @@ export async function saveSupportTicket(ticketData: Omit<SupportTicketLog, 'stat
   const fullTicketData: SupportTicketLog = {
     ...ticketData,
     status: 'Open',
-    timestamp: ticketData.timestamp || now, 
+    timestamp: ticketData.timestamp || now,
     lastUpdatedAt: now,
   };
   try {
@@ -410,7 +404,6 @@ export async function resolveSupportTicket(
   }
 }
 
-
 export async function sendSupportClosureEmailToUser(
   userEmail: string,
   supportId: string,
@@ -435,7 +428,6 @@ export async function enrollInClass(userId: string, classId: string): Promise<vo
   const userProfileRef = ref(database, `users/${userId}/profile/enrolledClassIds/${classId}`);
   try {
     await set(userProfileRef, true);
-    // Update lastUpdatedAt on the main profile
     const profileUpdateRef = ref(database, `users/${userId}/profile`);
     await update(profileUpdateRef, { lastUpdatedAt: new Date().toISOString() });
   } catch (error) {
@@ -452,7 +444,6 @@ export async function leaveClass(userId: string, classId: string): Promise<void>
   const userProfileRef = ref(database, `users/${userId}/profile/enrolledClassIds/${classId}`);
   try {
     await remove(userProfileRef);
-    // Update lastUpdatedAt on the main profile
     const profileUpdateRef = ref(database, `users/${userId}/profile`);
     await update(profileUpdateRef, { lastUpdatedAt: new Date().toISOString() });
   } catch (error) {
@@ -460,5 +451,3 @@ export async function leaveClass(userId: string, classId: string): Promise<void>
     throw error;
   }
 }
-
-    

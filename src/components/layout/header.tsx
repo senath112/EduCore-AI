@@ -21,7 +21,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { User as UserIcon, LogOut, LogIn, CircleDollarSign, Settings, CalendarDays, Phone, UserRound, Sun, Moon, ShieldCheck, LifeBuoy, School, BookOpen } from 'lucide-react'; 
+import { User as UserIcon, LogOut, LogIn, CircleDollarSign, Settings, CalendarDays, Phone, UserRound, Sun, Moon, ShieldCheck, LifeBuoy, School, BookOpen, Layers } from 'lucide-react'; 
 import { useRouter } from 'next/navigation';
 
 
@@ -54,10 +54,10 @@ export default function Header() {
           </Link>
           <div className="flex flex-wrap items-center justify-end gap-y-2 gap-x-3 sm:gap-x-4">
             {user && (
-              <>
+              <div className="flex items-center gap-2 sm:gap-3">
                 <SubjectSelector />
                 <LanguageSelector />
-              </>
+              </div>
             )}
             <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Toggle theme">
               {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
@@ -66,11 +66,16 @@ export default function Header() {
               <div className="h-9 w-32 rounded-md bg-muted animate-pulse" /> 
             ) : user ? (
               <div className="flex items-center gap-3">
-                {userProfile && typeof userProfile.credits === 'number' && (
+                {userProfile && typeof userProfile.credits === 'number' && !(userProfile.isAdmin || userProfile.isTeacher) && (
                   <Badge variant="secondary" className="flex items-center gap-1 pl-2 pr-2 py-1 text-sm">
                     <CircleDollarSign className="h-4 w-4 text-primary" />
                     {userProfile.credits} Credits
                   </Badge>
+                )}
+                {userProfile && (userProfile.isAdmin || userProfile.isTeacher) && (
+                   <Badge variant="outline" className="text-sm">
+                     {userProfile.isAdmin ? 'Admin Account' : 'Teacher Account'}
+                   </Badge>
                 )}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -126,6 +131,10 @@ export default function Header() {
                       </DropdownMenuItem>
                     )}
                     {(userProfile?.isAdmin || userProfile?.isTeacher) && <DropdownMenuSeparator />}
+                     <DropdownMenuItem onClick={() => router.push('/tools/flashcards')}>
+                      <Layers className="mr-2 h-4 w-4" />
+                      <span>Flashcard Generator</span>
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => router.push('/classes')}>
                       <BookOpen className="mr-2 h-4 w-4" />
                       <span>My Classes</span>
@@ -147,7 +156,7 @@ export default function Header() {
                 </DropdownMenu>
               </div>
             ) : (
-              <>
+              <div className="flex items-center gap-2">
                 <Button variant="outline" asChild size="sm">
                   <Link href="/login">
                     <LogIn className="mr-2 h-4 w-4" /> Log In
@@ -156,7 +165,7 @@ export default function Header() {
                 <Button asChild size="sm">
                   <Link href="/signup">Sign Up</Link>
                 </Button>
-              </>
+              </div>
             )}
           </div>
         </div>

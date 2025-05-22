@@ -1,4 +1,3 @@
-
 import { z } from 'zod';
 
 export const SignupFormSchema = z.object({
@@ -70,11 +69,7 @@ export const GenerateVouchersFormSchema = z.object({
 export type GenerateVouchersFormValues = z.infer<typeof GenerateVouchersFormSchema>;
 
 export const JoinClassSchema = z.object({
-  friendlyId: z.string()
-    .min(3, { message: "Class ID must be at least 3 characters." })
-    .max(10, { message: "Class ID seems too long."})
-    .regex(/^[A-Z0-9]+$/, { message: "Class ID must be uppercase alphanumeric characters."})
-    .transform((val) => val.toUpperCase()),
+  friendlyId: z.string().min(3, { message: "Class ID must be at least 3 characters." }).max(10, { message: "Class ID seems too long."}),
 });
 export type JoinClassFormValues = z.infer<typeof JoinClassSchema>;
 
@@ -86,20 +81,8 @@ export const RedeemVoucherSchema = z.object({
 });
 export type RedeemVoucherFormValues = z.infer<typeof RedeemVoucherSchema>;
 
-export const CreateQuizFormSchema = z.object({
-  title: z.string().min(3, "Title must be at least 3 characters long.").max(100, "Title cannot exceed 100 characters."),
-  description: z.string().min(10, "Description must be at least 10 characters long.").max(500, "Description cannot exceed 500 characters."),
-});
-export type CreateQuizFormValues = z.infer<typeof CreateQuizFormSchema>;
-
-export const AddMCQQuestionFormSchema = z.object({
-  questionText: z.string().min(10, "Question text must be at least 10 characters long.").max(1000, "Question text cannot exceed 1000 characters."),
-  optionA: z.string().min(1, "Option A cannot be empty.").max(200, "Option A cannot exceed 200 characters."),
-  optionB: z.string().min(1, "Option B cannot be empty.").max(200, "Option B cannot exceed 200 characters."),
-  optionC: z.string().min(1, "Option C cannot be empty.").max(200, "Option C cannot exceed 200 characters."),
-  optionD: z.string().min(1, "Option D cannot be empty.").max(200, "Option D cannot exceed 200 characters."),
-  optionE: z.string().min(1, "Option E cannot be empty.").max(200, "Option E cannot exceed 200 characters."),
-  correctAnswer: z.enum(["A", "B", "C", "D", "E"], { required_error: "You must select a correct answer." }),
-});
-export type AddMCQQuestionFormValues = z.infer<typeof AddMCQQuestionFormSchema>;
-
+// Removed ClassJoinRequestSchema and ClassJoinRequestFormValues
+// export const ClassJoinRequestSchema = z.object({
+//   message: z.string().max(200, "Message cannot exceed 200 characters.").optional(),
+// });
+// export type ClassJoinRequestFormValues = z.infer<typeof ClassJoinRequestSchema>;

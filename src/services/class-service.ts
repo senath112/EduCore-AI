@@ -15,6 +15,13 @@ export interface ClassData {
   instructorName: string;
   teacherId: string;
   friendlyId: string; // New user-friendly ID
+  pendingJoinRequests?: Record<string, { // Key is studentUserId
+    userId: string;
+    userName: string;
+    userEmail: string;
+    message?: string;
+    requestedAt: string; // ISO timestamp
+  }>;
 }
 
 // Check if a friendly ID is already taken
@@ -118,41 +125,6 @@ export async function getClassesByTeacher(teacherId: string): Promise<ClassData[
   }
 }
 
-
-// Enroll a user in a class
-export async function enrollInClass(userId: string, classId: string): Promise<void> {
-  if (!userId || !classId) {
-    throw new Error("User ID and Class ID are required to enroll.");
-  }
-  const userProfileEnrolledClassRef = ref(database, `users/${userId}/profile/enrolledClassIds/${classId}`);
-  try {
-    await set(userProfileEnrolledClassRef, true);
-    const profileUpdateRef = ref(database, `users/${userId}/profile`);
-    await update(profileUpdateRef, { lastUpdatedAt: new Date().toISOString() });
-    console.log(`User ${userId} enrolled in class ${classId}`);
-  } catch (error) {
-    console.error(`Error enrolling user ${userId} in class ${classId}:`, error);
-    throw error;
-  }
-}
-
-// User leaves a class
-export async function leaveClass(userId: string, classId: string): Promise<void> {
-  if (!userId || !classId) {
-    throw new Error("User ID and Class ID are required to leave class.");
-  }
-  const userProfileEnrolledClassRef = ref(database, `users/${userId}/profile/enrolledClassIds/${classId}`);
-  try {
-    await remove(userProfileEnrolledClassRef);
-    const profileUpdateRef = ref(database, `users/${userId}/profile`);
-    await update(profileUpdateRef, { lastUpdatedAt: new Date().toISOString() });
-    console.log(`User ${userId} left class ${classId}`);
-  } catch (error) {
-    console.error(`Error removing user ${userId} from class ${classId}:`, error);
-    throw error;
-  }
-}
-
 // Teacher creates a class
 export async function createClass(
   className: string,
@@ -186,7 +158,7 @@ export async function createClass(
   }
   const firebaseClassKey = newClassRef.key;
 
-  const newClassData: Omit<ClassData, 'id'> = {
+  const newClassData: Omit<ClassData, 'id' | 'pendingJoinRequests'> = {
     name: className,
     description: classDescription,
     teacherId: teacherId,
@@ -232,10 +204,44 @@ export async function deleteClass(classId: string, currentTeacherId: string): Pr
     await remove(classRef);
     await remove(friendlyIdMapRef);
     console.log(`Class ${classId} (Friendly ID: ${classData.friendlyId}) deleted by teacher ${currentTeacherId}.`);
-    // Note: This does not automatically un-enroll students. Their profiles will still list this classId.
-    // A more complex system might iterate through users and remove the classId from their enrolledClassIds.
   } catch (error) {
     console.error(`Error deleting class ${classId}:`, error);
+    throw error;
+  }
+}
+
+// Approve a student's request to join a class
+export async function approveJoinRequest(classId: string, studentUserId: string): Promise<void> {
+  if (!classId || !studentUserId) {
+    throw new Error("Class ID and Student User ID are required to approve join request.");
+  }
+
+  // Define paths for the atomic update
+  const updates: Record<string, any> = {};
+  updates[`/users/${studentUserId}/profile/enrolledClassIds/${classId}`] = true;
+  updates[`/users/${studentUserId}/profile/lastUpdatedAt`] = new Date().toISOString();
+  updates[`/classes/${classId}/pendingJoinRequests/${studentUserId}`] = null; // Deletes the pending request
+
+  try {
+    await update(ref(database), updates); // Perform atomic update
+    console.log(`Student ${studentUserId} approved and enrolled in class ${classId}. Pending request removed.`);
+  } catch (error) {
+    console.error(`Error approving join request for student ${studentUserId} in class ${classId}:`, error);
+    throw error;
+  }
+}
+
+// Deny a student's request to join a class
+export async function denyJoinRequest(classId: string, studentUserId: string): Promise<void> {
+  if (!classId || !studentUserId) {
+    throw new Error("Class ID and Student User ID are required to deny join request.");
+  }
+  const classPendingRequestRef = ref(database, `classes/${classId}/pendingJoinRequests/${studentUserId}`);
+  try {
+    await remove(classPendingRequestRef);
+    console.log(`Pending join request for student ${studentUserId} in class ${classId} denied and removed.`);
+  } catch (error) {
+    console.error(`Error denying join request for student ${studentUserId} in class ${classId}:`, error);
     throw error;
   }
 }

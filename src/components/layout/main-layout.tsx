@@ -1,7 +1,7 @@
 
 import type { ReactNode } from 'react';
 import Header from './header';
-import CopyrightYear from './copyright-year'; // Import the new component
+import CopyrightYear from './copyright-year';
 
 type MainLayoutProps = {
   children: ReactNode;
@@ -14,8 +14,10 @@ export default function MainLayout({ children }: MainLayoutProps) {
       <main className="flex flex-col flex-grow">
         {children}
       </main>
-      <footer className="py-4 text-center text-sm text-muted-foreground">
-        © <CopyrightYear /> EduCore AI. All rights reserved.
+      <footer className="py-4 text-center text-sm text-muted-foreground flex flex-col sm:flex-row items-center justify-center gap-x-4 gap-y-2">
+        <span>
+          © <CopyrightYear /> EduCore AI. All rights reserved.
+        </span>
       </footer>
     </div>
   );

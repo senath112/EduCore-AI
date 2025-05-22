@@ -8,13 +8,12 @@ import { useAuth } from '@/hooks/use-auth';
 import { aiTutor } from '@/ai/flows/ai-tutor';
 import type { AiTutorInput, AiTutorOutput } from '@/ai/flows/ai-tutor';
 import { saveFlaggedResponse, saveAIResponseFeedback } from '@/services/user-service';
-import type { AIResponseFeedbackLog } from '@/services/user-service';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
-import { Send, User, Bot, Loader2, Flag, Paperclip, XCircle, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Send, User, Bot, Loader2, Flag, Paperclip, XCircle, ThumbsUp, ThumbsDown, Lock, AlertTriangle } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -27,11 +26,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import DynamicChartRenderer from './dynamic-chart-renderer'; // Import the new chart renderer
+import DynamicChartRenderer from './dynamic-chart-renderer';
+import { SUBJECTS } from '@/lib/constants';
 
 type MessageAttachment = {
   name: string;
-  previewUrl: string; // For local preview before sending
+  previewUrl: string;
   type: 'image';
 };
 
@@ -61,9 +61,8 @@ const formatBoldText = (text: string) => {
   return { __html: html };
 };
 
-
 export default function ChatInterface() {
-  const { subject, language } = useSettings();
+  const settings = useSettings();
   const { user, userProfile, deductCreditForAITutor, profileLoading } = useAuth();
   const { toast } = useToast();
 
@@ -80,40 +79,53 @@ export default function ChatInterface() {
   const [isFlagConfirmDialogOpen, setIsFlagConfirmDialogOpen] = useState(false);
   const [flaggingMessageDetails, setFlaggingMessageDetails] = useState<{ messageId: string, messageContent: string } | null>(null);
   const [feedbackGiven, setFeedbackGiven] = useState<Record<string, 'up' | 'down'>>({});
+  
+  const lastContextKeyForGreeting = useRef<string | null>(null);
 
 
   const currentCredits = userProfile?.credits;
   const hasSufficientCredits = userProfile?.isAdmin || userProfile?.isTeacher || (typeof currentCredits === 'number' && currentCredits > 0);
 
-  const canSubmitMessage = !isAISending && !profileLoading && (currentMessage.trim() !== '' || !!selectedImageFile) && (userProfile?.isAdmin || userProfile?.isTeacher || hasSufficientCredits);
-  
   useEffect(() => {
-    if (profileLoading) return;
+    if (profileLoading) return; // Don't do anything if profile is still loading
 
-    setMessages([]); // Clear messages for new context
-    setFeedbackGiven({}); // Reset feedback
+    const currentContextKey = `${user?.uid || 'anonymous'}-${settings.subject}-${settings.language}-${settings.learningMode}`;
 
-    if (user) {
-      const greetingContent = `Hello! I'm your AI Learning Assistant for ${subject} in ${language}. How can I assist you today?`;
-      const greetingMessage: Message = {
-        id: `greeting-${Date.now()}-${Math.random()}`,
-        role: 'tutor',
-        content: greetingContent,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages([greetingMessage]);
+    if (lastContextKeyForGreeting.current !== currentContextKey) {
+      setMessages([]); // Start with a clean slate for the new context
+      
+      let greetingContent = "";
+      const currentSubjectDetails = SUBJECTS.find(s => s.value === settings.subject);
+      const personalityName = currentSubjectDetails?.tutorPersonality || `your AI Learning Assistant for ${settings.subject}`;
+
+      if (settings.learningMode === 'deep') {
+          greetingContent = `Deep Learning Mode for ${settings.subject} in ${settings.language} activated. How can I assist you with advanced concepts?`;
+      } else {
+          greetingContent = `Hello! I am ${personalityName}. I specialize in ${settings.subject} and I'll be assisting you in ${settings.language}. How may I help you today?`;
+          if (settings.subject === 'ICT') {
+              greetingContent += " For comprehensive study, please also refer to the Advanced Level ICT resource book provided by the Sri Lankan government.";
+          }
+      }
+
+      if(user) { // Only send greeting if user is logged in
+        const greetingMessage: Message = {
+          id: `greeting-${Date.now()}-${Math.random()}`,
+          role: 'tutor',
+          content: greetingContent,
+          timestamp: new Date().toISOString(),
+        };
+        setMessages([greetingMessage]);
+      }
+      lastContextKeyForGreeting.current = currentContextKey;
     }
-    
-    // Clear any pending file selection
-    if (imagePreviewUrl) {
-        URL.revokeObjectURL(imagePreviewUrl);
-        setImagePreviewUrl(null);
-    }
-    setSelectedImageFile(null);
-    setCurrentMessage('');
-    if (fileInputRef.current) fileInputRef.current.value = "";
 
-  }, [user, subject, language, profileLoading]);
+    return () => {
+        if (imagePreviewUrl) {
+            URL.revokeObjectURL(imagePreviewUrl);
+        }
+    };
+
+  }, [user, settings.subject, settings.language, settings.learningMode, profileLoading, imagePreviewUrl]);
 
 
   useEffect(() => {
@@ -124,7 +136,6 @@ export default function ChatInterface() {
       }
     }
   }, [messages, isAISending]);
-
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -162,18 +173,20 @@ export default function ChatInterface() {
     });
   };
 
+  const canSubmitMessage = !isAISending && !profileLoading && (currentMessage.trim() !== '' || !!selectedImageFile) && hasSufficientCredits;
 
   const handleSendMessage = async () => {
-    if (!canSubmitMessage || !user) {
+    if (!user || !userProfile) {
       if (!user) toast({ variant: "destructive", title: "Not Logged In", description: "You must be logged in." });
+      else if (!userProfile) toast({ variant: "destructive", title: "Profile Loading", description: "User profile is still loading. Please wait." });
       return;
+    }
+     if (!hasSufficientCredits) {
+        toast({ variant: "destructive", title: "Out of Credits", description: "Please add more credits." });
+        return;
     }
     if (profileLoading) {
       toast({ title: "Loading profile...", description: "Please wait."});
-      return;
-    }
-    if (!userProfile?.isAdmin && !userProfile?.isTeacher && !hasSufficientCredits) {
-      toast({ variant: "destructive", title: "Out of Credits", description: "Please add more credits." });
       return;
     }
 
@@ -209,26 +222,28 @@ export default function ChatInterface() {
     setMessages(prevMessages => [...prevMessages, studentMessage]);
 
     const messageToSendToAI = currentMessage;
-    setCurrentMessage('');
+    setCurrentMessage(''); 
     clearSelectedFile(); 
 
     try {
       const chatHistoryForAI = messages
+        .filter(msg => !msg.id.startsWith('greeting-')) 
         .map(msg => ({ role: msg.role, content: msg.content }));
 
       const input: AiTutorInput = {
-        subject,
-        language,
+        subject: settings.subject,
+        language: settings.language,
         studentMessage: messageToSendToAI,
         imageDataUri: imageDataUriForAI,
         chatHistory: chatHistoryForAI,
+        learningMode: settings.learningMode,
       };
 
       const result: AiTutorOutput = await aiTutor(input);
 
       if (!userProfile?.isAdmin && !userProfile?.isTeacher) {
         const creditDeducted = await deductCreditForAITutor();
-        if (!creditDeducted && result.tutorResponse) { 
+        if (!creditDeducted && result.tutorResponse) {
             toast({
                 variant: "destructive",
                 title: "Credit Issue",
@@ -265,6 +280,10 @@ export default function ChatInterface() {
   };
 
   const openFlagConfirmationDialog = (messageId: string, messageContent: string) => {
+    if (!user) {
+        toast({ variant: "destructive", title: "Not Logged In", description: "You must be logged in to flag a response." });
+        return;
+    }
     setFlaggingMessageDetails({ messageId, messageContent });
     setIsFlagConfirmDialogOpen(true);
   };
@@ -277,22 +296,24 @@ export default function ChatInterface() {
       return;
     }
     try {
-      const userDisplayName = userProfile?.displayName || user.displayName || null;
-      const chatHistorySnapshot = messages.map(m => ({ role: m.role, content: m.content }));
+      const userDisplayName = userProfile?.displayName || user.displayName || "Anonymous";
+      const chatHistorySnapshot = messages
+        .filter(m => !m.id.startsWith('greeting-')) 
+        .map(m => ({ role: m.role, content: m.content }));
 
       await saveFlaggedResponse(
         user.uid,
         userDisplayName,
         flaggingMessageDetails.messageId,
         flaggingMessageDetails.messageContent,
-        subject,
-        language,
+        settings.subject,
+        settings.language,
         chatHistorySnapshot
       );
       toast({ title: "Response Flagged", description: "Thank you for your feedback!" });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to flag response:", error);
-      toast({ variant: "destructive", title: "Flagging Failed", description: "Could not submit feedback." });
+      toast({ variant: "destructive", title: "Flagging Failed", description: error.message || "Could not submit feedback." });
     } finally {
       setIsFlagConfirmDialogOpen(false);
       setFlaggingMessageDetails(null);
@@ -309,14 +330,14 @@ export default function ChatInterface() {
       return;
     }
 
-    const feedbackData: AIResponseFeedbackLog = {
+    const feedbackData = { 
       userId: user.uid,
       userDisplayName: userProfile?.displayName || user.displayName || "Anonymous",
       messageId,
       aiResponseContent: messageContent,
       feedbackType,
-      subject,
-      language,
+      subject: settings.subject,
+      language: settings.language,
       timestamp: new Date().toISOString(),
     };
 
@@ -324,20 +345,18 @@ export default function ChatInterface() {
       await saveAIResponseFeedback(feedbackData);
       setFeedbackGiven(prev => ({ ...prev, [messageId]: feedbackType }));
       toast({ title: "Feedback Submitted", description: "Thank you for helping us improve!" });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to save AI response feedback:", error);
-      toast({ variant: "destructive", title: "Feedback Error", description: "Could not submit your feedback." });
+      toast({ variant: "destructive", title: "Feedback Error", description: error.message || "Could not submit your feedback." });
     }
   };
-
 
   let placeholderText = "Ask a question or request an explanation...";
   if (profileLoading) {
     placeholderText = "Loading profile & credits...";
-  } else if (!userProfile?.isAdmin && !userProfile?.isTeacher && !hasSufficientCredits && !!user) {
-    placeholderText = "You are out of credits. Please add more.";
+  } else if (!hasSufficientCredits && !!user) {
+    placeholderText = "You are out of credits.";
   }
-
 
   return (
     <>
@@ -345,15 +364,23 @@ export default function ChatInterface() {
       <CardContent className="p-0 flex-grow flex flex-col">
         <ScrollArea className="flex-grow w-full p-4" ref={scrollAreaRef}>
         <TooltipProvider>
-          {profileLoading && messages.length === 0 && ( 
+          {profileLoading && messages.length === 0 && (
             <div className="flex justify-center items-center h-full">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           )}
           {messages.map((msg) => {
             const isInitialGreeting = msg.id.startsWith('greeting-');
-            const isErrorMessage = msg.content === "I'm sorry, I encountered an error. Please try asking again.";
-            const canShowFeedbackButtons = msg.role === 'tutor' && !isInitialGreeting && !isErrorMessage;
+            const isErrorMessage = msg.content === "I'm sorry, I encountered an error. Please try asking again." || (msg.role === 'tutor' && msg.content.includes("I find myself unable to respond"));
+            
+            let tutorAvatarUrl: string | undefined = undefined;
+            let tutorFallbackText: string = '';
+
+            if (msg.role === 'tutor') {
+              const currentSubjectDetails = SUBJECTS.find(s => s.value === settings.subject);
+              tutorAvatarUrl = currentSubjectDetails?.imageUrl;
+              tutorFallbackText = currentSubjectDetails?.tutorPersonality?.charAt(0) || 'AI';
+            }
 
             return (
             <div
@@ -364,7 +391,12 @@ export default function ChatInterface() {
             >
               {msg.role === 'tutor' && (
                 <Avatar className="h-8 w-8">
-                  <AvatarFallback><Bot size={18}/></AvatarFallback>
+                  {tutorAvatarUrl ? (
+                    <AvatarImage key={tutorAvatarUrl} src={tutorAvatarUrl} alt={settings.subject + " Tutor"} />
+                  ) : null}
+                  <AvatarFallback>
+                    {tutorAvatarUrl ? tutorFallbackText.toUpperCase() : <Bot size={18}/>}
+                  </AvatarFallback>
                 </Avatar>
               )}
               <div
@@ -467,14 +499,21 @@ export default function ChatInterface() {
           )}
         </ScrollArea>
       </CardContent>
-      <CardFooter className="p-4 border-t">
+      <CardFooter className="p-4 border-t flex flex-col">
+        <div className="flex items-center justify-center text-xs text-muted-foreground mb-2 w-full gap-2">
+            <Lock className="h-3 w-3" />
+            <span>End-to-end Encrypted</span>
+            <span className="mx-1">|</span>
+            <AlertTriangle className="h-3 w-3 text-amber-500" />
+            <span>EduCore AI can make mistakes, so double check.</span>
+        </div>
         {selectedImageFile && imagePreviewUrl && (
-          <div className="mb-2 p-2 border rounded-md relative flex items-center gap-2 bg-muted">
-            <Image 
-              src={imagePreviewUrl} 
-              alt="Preview" 
-              width={40} 
-              height={40} 
+          <div className="mb-2 p-2 border rounded-md relative flex items-center gap-2 bg-muted w-full">
+            <Image
+              src={imagePreviewUrl}
+              alt="Preview"
+              width={40}
+              height={40}
               className="rounded object-cover"
               unoptimized 
             />
@@ -498,14 +537,14 @@ export default function ChatInterface() {
             accept="image/*"
             className="hidden"
             id="file-upload-input"
-            disabled={isAISending}
+            disabled={isAISending || profileLoading || (!hasSufficientCredits && !!user)}
           />
           <Button
             type="button"
             variant="ghost"
             size="icon"
             onClick={() => fileInputRef.current?.click()}
-            disabled={isAISending || profileLoading || (!userProfile?.isAdmin && !userProfile?.isTeacher && !hasSufficientCredits && !!user)}
+            disabled={isAISending || profileLoading || (!hasSufficientCredits && !!user)}
             aria-label="Attach image"
           >
             <Paperclip className="h-5 w-5" />
@@ -516,7 +555,7 @@ export default function ChatInterface() {
             value={currentMessage}
             onChange={(e) => setCurrentMessage(e.target.value)}
             className="flex-grow"
-            disabled={isAISending || profileLoading || (!userProfile?.isAdmin && !userProfile?.isTeacher && !hasSufficientCredits && !!user)}
+            disabled={isAISending || profileLoading || (!hasSufficientCredits && !!user)}
           />
           <Button type="submit" disabled={!canSubmitMessage} size="icon" aria-label="Send message">
             {isAISending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
@@ -536,7 +575,7 @@ export default function ChatInterface() {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setFlaggingMessageDetails(null)}>Cancel</AlertDialogCancel>
+              <AlertDialogCancel onClick={() => { setFlaggingMessageDetails(null); setIsFlagConfirmDialogOpen(false); }}>Cancel</AlertDialogCancel>
               <AlertDialogAction onClick={confirmFlagMessage}>Confirm Flag</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -545,3 +584,5 @@ export default function ChatInterface() {
     </>
   );
 }
+
+    
