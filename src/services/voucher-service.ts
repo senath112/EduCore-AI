@@ -4,15 +4,16 @@ import { ref, get, set, update } from 'firebase/database';
 import type { Database } from 'firebase/database';
 import { getDatabase } from 'firebase/database';
 import { app } from '@/lib/firebase';
-import { generateVoucherCode } from '@/lib/voucherUtils';
+import { generateVoucherCode, generateBatchId } from '@/lib/voucherUtils';
 import { addDays, formatISO, isPast, parseISO } from 'date-fns';
-import { getUserProfile, updateUserCredits } from './user-service';
+import { getUserProfile, updateUserCredits, enrollInClass } from './user-service';
 import { getAllClasses } from './class-service';
 
 const database: Database = getDatabase(app);
 
 export interface CreditVoucher {
   id: string; // The voucher code itself
+  batchId: string; // ID for the batch this voucher belongs to
   credits: number;
   generatedByTeacherId: string;
   generatedByTeacherName: string;
@@ -45,7 +46,7 @@ export async function createCreditVouchers(
   restrictedToClassId?: string,
   restrictedToClassName?: string,
   restrictedToFriendlyClassId?: string
-): Promise<CreditVoucher[]> {
+): Promise<{ vouchers: CreditVoucher[]; batchId: string; }> {
   if (!teacherId || !teacherName) {
     throw new Error("Teacher information is required to generate vouchers.");
   }
@@ -63,14 +64,13 @@ export async function createCreditVouchers(
 
   const totalCreditsRequired = creditsPerVoucher * numberOfVouchers;
   const currentTeacherCredits = typeof teacherProfile.credits === 'number' ? teacherProfile.credits : 0;
+  const isTeacherAdmin = !!teacherProfile.isAdmin;
 
-  // Admins have unlimited voucher generation
-  if (!teacherProfile.isAdmin) {
+  if (!isTeacherAdmin) {
     if (currentTeacherCredits < totalCreditsRequired) {
       throw new Error(`Insufficient credits. You need ${totalCreditsRequired} credits to generate these vouchers, but you only have ${currentTeacherCredits}.`);
     }
     
-    // Deduct credits from the teacher if they are not an admin
     const newTeacherCreditAmount = currentTeacherCredits - totalCreditsRequired;
     try {
       await updateUserCredits(teacherId, newTeacherCreditAmount);
@@ -80,7 +80,7 @@ export async function createCreditVouchers(
     }
   }
 
-
+  const batchIdentifier = generateBatchId();
   const createdVouchers: CreditVoucher[] = [];
   const MAX_CODE_GENERATION_ATTEMPTS = 10;
 
@@ -101,15 +101,15 @@ export async function createCreditVouchers(
     }
 
     if (!isUnique) {
-      // Attempt to restore credits if code generation fails and user is not admin
-      if (!teacherProfile.isAdmin) {
-        await updateUserCredits(teacherId, currentTeacherCredits); // Restore to original amount
+      if (!isTeacherAdmin) {
+        await updateUserCredits(teacherId, currentTeacherCredits); 
       }
-      throw new Error(`Failed to generate a unique voucher code after ${MAX_CODE_GENERATION_ATTEMPTS} attempts. ${!teacherProfile.isAdmin ? 'Teacher credits have been restored.' : ''}`);
+      throw new Error(`Failed to generate a unique voucher code after ${MAX_CODE_GENERATION_ATTEMPTS} attempts. ${!isTeacherAdmin ? 'Teacher credits have been restored.' : ''}`);
     }
 
     const newVoucherData: CreditVoucher = {
       id: voucherCode,
+      batchId: batchIdentifier,
       credits: creditsPerVoucher,
       generatedByTeacherId: teacherId,
       generatedByTeacherName: teacherName,
@@ -132,15 +132,14 @@ export async function createCreditVouchers(
       createdVouchers.push(newVoucherData);
     } catch (error) {
       console.error(`Error saving voucher ${voucherCode}:`, error);
-      // Attempt to restore credits if save fails and user is not admin
-       if (!teacherProfile.isAdmin) {
-         await updateUserCredits(teacherId, currentTeacherCredits); // Restore to original amount
+       if (!isTeacherAdmin) {
+         await updateUserCredits(teacherId, currentTeacherCredits);
        }
-      throw new Error(`Failed to save voucher ${voucherCode}. ${!teacherProfile.isAdmin ? 'Teacher credits have been restored.' : ''}`);
+      throw new Error(`Failed to save voucher ${voucherCode}. ${!isTeacherAdmin ? 'Teacher credits have been restored.' : ''}`);
     }
   }
-  console.log(`${createdVouchers.length} credit vouchers created by teacher ${teacherName} (${teacherId}). ${!teacherProfile.isAdmin ? totalCreditsRequired + ' credits deducted.' : 'Credits not deducted (Admin user).'}`);
-  return createdVouchers;
+  console.log(`${createdVouchers.length} credit vouchers (Batch ID: ${batchIdentifier}) created by teacher ${teacherName} (${teacherId}). ${!isTeacherAdmin ? totalCreditsRequired + ' credits deducted.' : 'Credits not deducted (Admin user).'}`);
+  return { vouchers: createdVouchers, batchId: batchIdentifier };
 }
 
 export async function getAllCreditVouchers(): Promise<CreditVoucher[]> {
@@ -159,7 +158,7 @@ export async function getAllCreditVouchers(): Promise<CreditVoucher[]> {
   }
 }
 
-export async function redeemVoucher(userId: string, voucherCodeInput: string): Promise<{ success: boolean; message: string; creditsAwarded?: number }> {
+export async function redeemVoucher(userId: string, voucherCodeInput: string): Promise<{ success: boolean; message: string; creditsAwarded?: number, autoEnrolledClassId?: string }> {
   const voucherCode = voucherCodeInput.toUpperCase();
   const voucherRef = ref(database, `creditVouchers/${voucherCode}`);
   const voucherSnapshot = await get(voucherRef);
@@ -187,20 +186,29 @@ export async function redeemVoucher(userId: string, voucherCodeInput: string): P
 
   const userProfile = await getUserProfile(userId);
   if (!userProfile) {
-    return { success: false, message: "User profile not found. Cannot verify enrollment." };
+    return { success: false, message: "User profile not found. Cannot proceed with redemption." };
   }
 
+  let autoEnrolledClassId: string | undefined = undefined;
+
   if (voucher.restrictedToClassId) {
-    // Voucher is restricted to a specific class
     const studentEnrolledClassIds = userProfile.enrolledClassIds || {};
     if (!studentEnrolledClassIds[voucher.restrictedToClassId]) {
-      return {
-        success: false,
-        message: `This voucher is restricted to students enrolled in the class: "${voucher.restrictedToClassName || voucher.restrictedToClassId}". To redeem this voucher, please ensure you are enrolled in this specific class.`
-      };
+      // Attempt to auto-enroll
+      try {
+        await enrollInClass(userId, voucher.restrictedToClassId);
+        console.log(`User ${userId} auto-enrolled in class ${voucher.restrictedToClassId} during voucher redemption.`);
+        autoEnrolledClassId = voucher.restrictedToClassId;
+      } catch (enrollError) {
+        console.error(`Auto-enrollment failed for user ${userId} in class ${voucher.restrictedToClassId}:`, enrollError);
+        return {
+          success: false,
+          message: `This voucher is for class "${voucher.restrictedToClassName || voucher.restrictedToClassId}". We tried to enroll you automatically, but it failed. Please try joining the class manually first, then redeem the voucher.`
+        };
+      }
     }
   } else {
-    // Voucher is not restricted to a specific class, but to any class by the creating teacher
+    // Voucher not restricted to a specific class, but to any class by the creating teacher
     const studentEnrolledClassIds = Object.keys(userProfile.enrolledClassIds || {});
     if (studentEnrolledClassIds.length === 0) {
       return { success: false, message: `This voucher is for students of ${voucher.generatedByTeacherName}. You must be enrolled in one of their classes.` };
@@ -229,11 +237,15 @@ export async function redeemVoucher(userId: string, voucherCodeInput: string): P
       redeemedAt: new Date().toISOString(),
     };
     await update(voucherRef, updatedVoucherData);
+    
+    let successMessage = `Successfully redeemed ${voucher.credits} credits!`;
+    if (autoEnrolledClassId && voucher.restrictedToClassName) {
+        successMessage += ` You've also been automatically enrolled in the class: "${voucher.restrictedToClassName}".`;
+    }
 
-    return { success: true, message: `Successfully redeemed ${voucher.credits} credits!`, creditsAwarded: voucher.credits };
+    return { success: true, message: successMessage, creditsAwarded: voucher.credits, autoEnrolledClassId };
   } catch (error: any) {
     console.error("Error during voucher redemption process:", error);
     return { success: false, message: `Redemption failed due to a system error. Please try again later or contact support.` };
   }
 }
-

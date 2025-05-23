@@ -6,6 +6,7 @@ import { getDatabase } from 'firebase/database';
 import { app } from '@/lib/firebase';
 import { formatISO } from 'date-fns';
 import type { AddMCQQuestionFormValues } from '@/lib/schemas';
+import { generateFriendlyQuizId } from '@/lib/quizUtils'; // Import new utility
 
 const database: Database = getDatabase(app);
 
@@ -26,6 +27,7 @@ export interface QuestionData {
 
 export interface QuizData {
   id: string; // Firebase push key for the quiz
+  friendlyId?: string; // New user-friendly ID
   classId: string;
   className: string; // Name of the class for convenience
   teacherId: string;
@@ -48,6 +50,42 @@ export interface QuizAttempt {
     attemptedAt: string; // ISO timestamp
 }
 
+// Check if a friendly quiz ID is already taken
+export async function isFriendlyQuizIdTaken(friendlyId: string): Promise<boolean> {
+  const mapRef = ref(database, `quizFriendlyIdMap/${friendlyId.toUpperCase()}`);
+  try {
+    const snapshot = await get(mapRef);
+    return snapshot.exists();
+  } catch (error) {
+    console.error('Error checking friendly quiz ID:', error);
+    throw error;
+  }
+}
+
+// Get Firebase quiz key by friendly ID
+export async function getFirebaseQuizKeyByFriendlyId(friendlyId: string): Promise<string | null> {
+  const mapRef = ref(database, `quizFriendlyIdMap/${friendlyId.toUpperCase()}`);
+  try {
+    const snapshot = await get(mapRef);
+    if (snapshot.exists()) {
+      return snapshot.val() as string;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error fetching Firebase quiz key by friendly ID:', error);
+    throw error;
+  }
+}
+
+// Fetch quiz data using a friendly ID
+export async function getQuizByFriendlyId(friendlyId: string): Promise<QuizData | null> {
+  const firebaseQuizKey = await getFirebaseQuizKeyByFriendlyId(friendlyId.toUpperCase());
+  if (firebaseQuizKey) {
+    return getQuizById(firebaseQuizKey);
+  }
+  return null;
+}
+
 
 export async function createQuiz(data: {
   classId: string;
@@ -56,7 +94,22 @@ export async function createQuiz(data: {
   teacherName: string;
   title: string;
   description: string;
-}): Promise<{ quizId: string }> {
+}): Promise<{ quizId: string; friendlyId: string }> {
+  let friendlyId = '';
+  let idIsUnique = false;
+  let attempts = 0;
+  const MAX_ATTEMPTS = 10;
+
+  while (!idIsUnique && attempts < MAX_ATTEMPTS) {
+    friendlyId = generateFriendlyQuizId();
+    idIsUnique = !(await isFriendlyQuizIdTaken(friendlyId));
+    attempts++;
+  }
+
+  if (!idIsUnique) {
+    throw new Error("Failed to generate a unique friendly Quiz ID after several attempts.");
+  }
+
   const quizzesRef = ref(database, 'quizzes');
   const newQuizRef = push(quizzesRef);
   if (!newQuizRef.key) {
@@ -67,6 +120,7 @@ export async function createQuiz(data: {
 
   const quizData: Omit<QuizData, 'questions' | 'lastUpdatedAt'> = {
     id: quizId,
+    friendlyId: friendlyId.toUpperCase(),
     ...data,
     createdAt: now,
     status: 'draft',
@@ -76,12 +130,19 @@ export async function createQuiz(data: {
   updates[`/quizzes/${quizId}`] = quizData;
   updates[`/classes/${data.classId}/quizzes/${quizId}`] = true;
   updates[`/teachers/${data.teacherId}/quizzes/${quizId}`] = true;
+  updates[`/quizFriendlyIdMap/${friendlyId.toUpperCase()}`] = quizId;
+
 
   try {
     await update(ref(database), updates);
-    console.log(`Quiz created with ID: ${quizId} for class ${data.className} by teacher ${data.teacherName}`);
-    return { quizId };
+    console.log(`Quiz created with ID: ${quizId}, Friendly ID: ${friendlyId} for class ${data.className} by teacher ${data.teacherName}`);
+    return { quizId, friendlyId };
   } catch (error) {
+    // Attempt to clean up if parts of the operation failed
+    await remove(ref(database, `/quizzes/${quizId}`)).catch(e => console.error("Cleanup failed for quiz data", e));
+    await remove(ref(database, `/classes/${data.classId}/quizzes/${quizId}`)).catch(e => console.error("Cleanup failed for class quiz ref", e));
+    await remove(ref(database, `/teachers/${data.teacherId}/quizzes/${quizId}`)).catch(e => console.error("Cleanup failed for teacher quiz ref", e));
+    await remove(ref(database, `/quizFriendlyIdMap/${friendlyId.toUpperCase()}`)).catch(e => console.error("Cleanup failed for quiz friendlyIdMap ref", e));
     console.error('Error creating quiz:', error);
     throw error;
   }
@@ -214,6 +275,13 @@ export async function bulkAddMCQQuestionsToQuiz(
 
 export async function publishQuiz(quizId: string): Promise<void> {
   if (!quizId) throw new Error("Quiz ID is required to publish a quiz.");
+  
+  // Check if quiz has questions before publishing
+  const quizData = await getQuizById(quizId);
+  if (!quizData || !quizData.questions || Object.keys(quizData.questions).length === 0) {
+    throw new Error("Cannot publish quiz: No questions have been added to this quiz yet.");
+  }
+
   const quizRef = ref(database, `quizzes/${quizId}`);
   try {
     await update(quizRef, { status: 'published', lastUpdatedAt: formatISO(new Date()) });
@@ -249,12 +317,11 @@ export async function submitQuizAttempt(
 
     if (!userDisplayName) {
         console.warn(`Attempting to save quiz attempt for userId ${userId} without a displayName.`);
-        // userDisplayName = "Anonymous"; // Or handle as per your app's logic
     }
 
     const attemptData: QuizAttempt = {
         userId,
-        userDisplayName, // This can be null if profile isn't complete
+        userDisplayName, 
         quizId,
         quizTitle,
         answers,

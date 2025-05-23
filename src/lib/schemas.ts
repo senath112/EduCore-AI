@@ -103,3 +103,19 @@ export const AddMCQQuestionFormSchema = z.object({
 });
 export type AddMCQQuestionFormValues = z.infer<typeof AddMCQQuestionFormSchema>;
 
+export const CreateForumPostSchema = z.object({
+  text: z.string()
+    .min(1, { message: "Post content cannot be empty." })
+    .max(2000, { message: "Post content cannot exceed 2000 characters." }),
+});
+export type CreateForumPostFormValues = z.infer<typeof CreateForumPostSchema>;
+
+export const CreateForumTopicSchema = z.object({
+  title: z.string()
+    .min(5, { message: "Topic title must be at least 5 characters long." })
+    .max(100, { message: "Topic title cannot exceed 100 characters." }),
+  description: z.string()
+    .min(10, { message: "Topic description must be at least 10 characters long." })
+    .max(500, { message: "Topic description cannot exceed 500 characters." }),
+});
+export type CreateForumTopicFormValues = z.infer<typeof CreateForumTopicSchema>;

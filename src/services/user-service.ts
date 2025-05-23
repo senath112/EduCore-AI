@@ -5,7 +5,7 @@ import type { Database } from 'firebase/database';
 import { getDatabase } from 'firebase/database';
 import { app } from '@/lib/firebase';
 import type { User } from 'firebase/auth';
-// Removed sanitizeFirebaseKey as it's no longer used directly here for user question logs by name
+import { format, parseISO, isSameDay, isYesterday, subDays } from 'date-fns';
 
 const DEFAULT_INITIAL_CREDITS = 10;
 const database: Database = getDatabase(app);
@@ -24,6 +24,8 @@ export interface UserProfile {
   isTeacher?: boolean;
   isAccountDisabled?: boolean;
   enrolledClassIds?: Record<string, boolean>;
+  currentStreak?: number;
+  lastActivityDate?: string; // YYYY-MM-DD
 }
 
 export interface UserProfileWithId extends UserProfile {
@@ -145,6 +147,8 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
     isTeacher: typeof additionalData.isTeacher === 'boolean' ? additionalData.isTeacher : (existingProfile?.isTeacher || false),
     isAccountDisabled: typeof additionalData.isAccountDisabled === 'boolean' ? additionalData.isAccountDisabled : (existingProfile?.isAccountDisabled || false),
     enrolledClassIds: additionalData.enrolledClassIds ?? existingProfile?.enrolledClassIds ?? {},
+    currentStreak: additionalData.currentStreak ?? existingProfile?.currentStreak ?? 0,
+    lastActivityDate: additionalData.lastActivityDate ?? existingProfile?.lastActivityDate ?? '',
   };
 
   const cleanedProfileData = Object.fromEntries(
@@ -188,10 +192,13 @@ export async function adminUpdateUserProfile(
     isTeacher: typeof updates.isTeacher === 'boolean' ? updates.isTeacher : existingProfile.isTeacher,
     isAccountDisabled: typeof updates.isAccountDisabled === 'boolean' ? updates.isAccountDisabled : existingProfile.isAccountDisabled,
     lastUpdatedAt: now,
+    // Retain these from existing
     email: existingProfile.email,
     photoURL: existingProfile.photoURL,
     createdAt: existingProfile.createdAt,
     enrolledClassIds: existingProfile.enrolledClassIds,
+    currentStreak: existingProfile.currentStreak,
+    lastActivityDate: existingProfile.lastActivityDate,
   };
 
   const cleanedUpdates = Object.fromEntries(
@@ -449,5 +456,50 @@ export async function leaveClass(userId: string, classId: string): Promise<void>
   } catch (error) {
     console.error(`Error removing user ${userId} from class ${classId}:`, error);
     throw error;
+  }
+}
+
+export async function updateUserActivityAndStreak(userId: string): Promise<void> {
+  if (!userId) return;
+
+  const userProfileRef = ref(database, `users/${userId}/profile`);
+  try {
+    const snapshot = await get(userProfileRef);
+    if (!snapshot.exists()) {
+      console.warn(`User profile not found for streak update: ${userId}`);
+      return;
+    }
+    const profile = snapshot.val() as UserProfile;
+
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    let newStreak = profile.currentStreak || 0;
+    let newLastActivityDate = profile.lastActivityDate || '';
+
+    if (!newLastActivityDate) { // First activity ever
+      newStreak = 1;
+    } else {
+      const lastActivity = parseISO(newLastActivityDate);
+      if (!isSameDay(new Date(), lastActivity)) { // Activity on a new day
+        if (isYesterday(lastActivity)) {
+          newStreak += 1;
+        } else { // Streak broken
+          newStreak = 1;
+        }
+      }
+      // If it's the same day, streak doesn't change
+    }
+    newLastActivityDate = todayStr;
+
+    if (newStreak !== profile.currentStreak || newLastActivityDate !== profile.lastActivityDate) {
+      await update(userProfileRef, {
+        currentStreak: newStreak,
+        lastActivityDate: newLastActivityDate,
+        lastUpdatedAt: new Date().toISOString(),
+      });
+      console.log(`User ${userId} streak updated to ${newStreak}, last activity ${newLastActivityDate}`);
+    }
+  } catch (error) {
+    console.error(`Error updating streak for user ${userId}:`, error);
+    // Optionally re-throw or handle more gracefully
   }
 }
