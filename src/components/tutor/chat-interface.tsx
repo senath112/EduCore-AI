@@ -7,7 +7,7 @@ import { useSettings } from '@/hooks/use-settings';
 import { useAuth } from '@/hooks/use-auth';
 import { aiTutor } from '@/ai/flows/ai-tutor';
 import type { AiTutorInput, AiTutorOutput } from '@/ai/flows/ai-tutor';
-import { saveFlaggedResponse, saveAIResponseFeedback } from '@/services/user-service';
+import { saveFlaggedResponse, saveAIResponseFeedback, saveUserQuestion } from '@/services/user-service';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import DynamicChartRenderer from './dynamic-chart-renderer';
 import { SUBJECTS } from '@/lib/constants';
+import ReCAPTCHA from 'react-google-recaptcha'; // Import ReCAPTCHA
 
 type MessageAttachment = {
   name: string;
@@ -73,21 +74,41 @@ export default function ChatInterface() {
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const [isFlagConfirmDialogOpen, setIsFlagConfirmDialogOpen] = useState(false);
   const [flaggingMessageDetails, setFlaggingMessageDetails] = useState<{ messageId: string, messageContent: string } | null>(null);
   const [feedbackGiven, setFeedbackGiven] = useState<Record<string, 'up' | 'down'>>({});
   
+  // Refs for managing greeting state across context changes
+  const lastContextKeyForGreeting = useRef<string | null>(null);
+  const greetingSentForContext = useRef<string | null>(null);
 
-  const currentCredits = userProfile?.credits;
-  const hasSufficientCredits = userProfile?.isAdmin || userProfile?.isTeacher || (typeof currentCredits === 'number' && currentCredits > 0);
+  const recaptchaRef = useRef<ReCAPTCHA>(null); // Ref for reCAPTCHA
+  const isRecaptchaEnabled = process.env.NEXT_PUBLIC_RECAPTCHA_ENABLED === "true";
+  const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
 
-  // Effect for initial greeting message when user, subject, or language changes.
-  // Messages are not persistent in this version.
+
   useEffect(() => {
-    if (user) { // No longer check !profileLoading here for setting messages
+    // Cleanup object URL on component unmount or when imagePreviewUrl changes
+    return () => {
+      if (imagePreviewUrl) {
+        URL.revokeObjectURL(imagePreviewUrl);
+      }
+    };
+  }, [imagePreviewUrl]);
+
+  useEffect(() => {
+    const currentContextKey = `${user?.uid || 'nouser'}_${settings.subject}_${settings.language}_${settings.learningMode}`;
+
+    if (lastContextKeyForGreeting.current !== currentContextKey) {
+      // Context has changed, reset messages and greeting status for this new context
+      setMessages([]);
+      greetingSentForContext.current = null; // Mark that greeting needs to be re-evaluated
+      lastContextKeyForGreeting.current = currentContextKey;
+    }
+
+    if (user && !greetingSentForContext.current) {
       let greetingContent = "";
       const currentSubjectDetails = SUBJECTS.find(s => s.value === settings.subject);
       const personalityName = currentSubjectDetails?.tutorPersonality || `your AI Learning Assistant for ${settings.subject}`;
@@ -108,16 +129,14 @@ export default function ChatInterface() {
         timestamp: new Date().toISOString(),
       };
       setMessages([newGreetingMessage]);
-    } else {
+      greetingSentForContext.current = currentContextKey; // Mark greeting as sent for this context
+    } else if (!user) {
       setMessages([]); // Clear messages if user logs out
+      greetingSentForContext.current = null; // Reset greeting status
+      lastContextKeyForGreeting.current = null;
     }
-    
-    return () => {
-        if (imagePreviewUrl) {
-            URL.revokeObjectURL(imagePreviewUrl);
-        }
-    };
-  }, [user, settings.subject, settings.language]); // Removed profileLoading
+  }, [user, settings.subject, settings.language, settings.learningMode]);
+
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -164,15 +183,37 @@ export default function ChatInterface() {
     });
   };
 
+  const currentCredits = userProfile?.credits;
+  const isPrivilegedUser = userProfile?.isAdmin || userProfile?.isTeacher;
+  const hasSufficientCredits = isPrivilegedUser || (typeof currentCredits === 'number' && currentCredits > 0);
   const canSubmitMessage = !isAISending && !profileLoading && (currentMessage.trim() !== '' || !!selectedImageFile) && hasSufficientCredits && !!user;
 
   const handleSendMessage = async () => {
+    if (isRecaptchaEnabled && recaptchaRef.current && recaptchaSiteKey) {
+      try {
+        const token = await recaptchaRef.current.executeAsync();
+        if (!token) {
+          toast({ variant: "destructive", title: "reCAPTCHA Error", description: "Failed to verify reCAPTCHA. Please try again." });
+          recaptchaRef.current.reset();
+          return;
+        }
+        console.warn("ChatInterface reCAPTCHA token:", token, "IMPORTANT: This token MUST be verified server-side for security.");
+        // In a real application, send this token to your backend for verification.
+        recaptchaRef.current.reset();
+      } catch (error) {
+        console.error("reCAPTCHA execution error:", error);
+        toast({ variant: "destructive", title: "reCAPTCHA Error", description: "An error occurred during reCAPTCHA verification." });
+        if (recaptchaRef.current) recaptchaRef.current.reset();
+        return;
+      }
+    }
+
     if (!user || !userProfile) {
       if (!user) toast({ variant: "destructive", title: "Not Logged In", description: "You must be logged in." });
       else if (!userProfile) toast({ variant: "destructive", title: "Profile Loading", description: "User profile is still loading. Please wait." });
       return;
     }
-     if (!hasSufficientCredits && !userProfile.isAdmin && !userProfile.isTeacher) {
+     if (!hasSufficientCredits && !isPrivilegedUser) {
         toast({ variant: "destructive", title: "Out of Credits", description: "Please add more credits." });
         return;
     }
@@ -212,13 +253,14 @@ export default function ChatInterface() {
         attachment: studentAttachmentForUI,
     };
     setMessages(prevMessages => [...prevMessages, studentMessage]);
+    // Don't save student question here anymore based on previous request to remove saving all user content
 
     const messageToSendToAI = currentMessage;
     setCurrentMessage(''); 
     clearSelectedFile(); 
 
     try {
-      const chatHistoryForAI = messages // Use current messages state for history
+      const chatHistoryForAI = messages 
         .filter(msg => !msg.id.startsWith('greeting-')) 
         .map(msg => ({ role: msg.role, content: msg.content }));
       if (studentMessageContent) {
@@ -236,7 +278,7 @@ export default function ChatInterface() {
 
       const result: AiTutorOutput = await aiTutor(input);
 
-      if (!userProfile?.isAdmin && !userProfile?.isTeacher) {
+      if (!isPrivilegedUser) {
         const creditDeducted = await deductCreditForAITutor();
         if (!creditDeducted && result.tutorResponse) {
             toast({
@@ -291,9 +333,9 @@ export default function ChatInterface() {
       setFlaggingMessageDetails(null);
       return;
     }
+    console.log('Flagging message with details:', flaggingMessageDetails, 'User:', user.uid, 'Current Subject:', settings.subject);
     try {
       const userDisplayName = userProfile?.displayName || user.displayName || "Anonymous";
-      // Snapshot the current UI messages for context
       const chatHistorySnapshot = messages 
         .filter(m => !m.id.startsWith('greeting-'))
         .map(m => ({ role: m.role, content: m.content }));
@@ -353,7 +395,7 @@ export default function ChatInterface() {
     placeholderText = "Loading profile & credits...";
   } else if (!user) {
     placeholderText = "Please log in to chat.";
-  } else if (!hasSufficientCredits && !(userProfile?.isAdmin || userProfile?.isTeacher)) {
+  } else if (!hasSufficientCredits && !isPrivilegedUser) {
     placeholderText = "You are out of credits.";
   }
 
@@ -361,6 +403,13 @@ export default function ChatInterface() {
   return (
     <>
     <Card className="w-full shadow-xl flex flex-col flex-grow">
+      {isRecaptchaEnabled && recaptchaSiteKey && (
+          <ReCAPTCHA
+            ref={recaptchaRef}
+            sitekey={recaptchaSiteKey}
+            size="invisible"
+          />
+        )}
       <CardContent className="p-0 flex-grow flex flex-col">
         <ScrollArea className="flex-grow w-full p-4" ref={scrollAreaRef}>
         <TooltipProvider>
@@ -537,14 +586,14 @@ export default function ChatInterface() {
             accept="image/*"
             className="hidden"
             id="file-upload-input"
-            disabled={isAISending || profileLoading || (!hasSufficientCredits && !!user && !(userProfile?.isAdmin || userProfile?.isTeacher))}
+            disabled={isAISending || profileLoading || (!hasSufficientCredits && !isPrivilegedUser)}
           />
           <Button
             type="button"
             variant="ghost"
             size="icon"
             onClick={() => fileInputRef.current?.click()}
-            disabled={isAISending || profileLoading || (!hasSufficientCredits && !!user && !(userProfile?.isAdmin || userProfile?.isTeacher))}
+            disabled={isAISending || profileLoading || (!hasSufficientCredits && !isPrivilegedUser)}
             aria-label="Attach image"
           >
             <Paperclip className="h-5 w-5" />
@@ -555,7 +604,7 @@ export default function ChatInterface() {
             value={currentMessage}
             onChange={(e) => setCurrentMessage(e.target.value)}
             className="flex-grow"
-            disabled={isAISending || profileLoading || (!user || (!hasSufficientCredits && !(userProfile?.isAdmin || userProfile?.isTeacher)))}
+            disabled={isAISending || profileLoading || (!user || (!hasSufficientCredits && !isPrivilegedUser))}
           />
           <Button type="submit" disabled={!canSubmitMessage} size="icon" aria-label="Send message">
             {isAISending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
@@ -584,5 +633,4 @@ export default function ChatInterface() {
     </>
   );
 }
-
     

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useRef } from 'react'; // Added useRef
+import { useState, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
@@ -28,7 +28,6 @@ export default function SignupForm() {
   const { refreshUserProfile, authInstance } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
   const recaptchaRef = useRef<ReCAPTCHA>(null);
 
   const isRecaptchaEnabled = process.env.NEXT_PUBLIC_RECAPTCHA_ENABLED === "true";
@@ -46,21 +45,31 @@ export default function SignupForm() {
     },
   });
 
-  const handleRecaptchaChange = (token: string | null) => {
-    setRecaptchaToken(token);
-  };
-
   const onSubmit = async (values: SignupFormValues) => {
-    if (isRecaptchaEnabled && !recaptchaToken) {
-      toast({ variant: "destructive", title: "CAPTCHA Required", description: "Please complete the reCAPTCHA." });
-      return;
+    if (isRecaptchaEnabled && recaptchaRef.current && recaptchaSiteKey) {
+      try {
+        const token = await recaptchaRef.current.executeAsync();
+        if (!token) {
+          toast({ variant: "destructive", title: "reCAPTCHA Error", description: "Failed to verify reCAPTCHA. Please try again." });
+          recaptchaRef.current.reset();
+          return;
+        }
+        console.warn(
+          "reCAPTCHA v3 token obtained:", token, 
+          "IMPORTANT: This token MUST be verified server-side with your secret key for security. This client-side step alone is NOT secure."
+        );
+        // In a real application, send this token to your backend for verification.
+      } catch (error) {
+        console.error("reCAPTCHA execution error:", error);
+        toast({ variant: "destructive", title: "reCAPTCHA Error", description: "An error occurred during reCAPTCHA verification." });
+        recaptchaRef.current.reset();
+        return;
+      }
     }
-    // IMPORTANT: In a real application, you would send the 'recaptchaToken'
-    // to your backend here to verify it with Google using your RECAPTCHA_SECRET_KEY.
-    // This client-side only check can be bypassed.
 
     if (!authInstance) {
       toast({ variant: "destructive", title: "Error", description: "Authentication service not ready. Please try again." });
+      if (isRecaptchaEnabled && recaptchaRef.current) recaptchaRef.current.reset();
       return;
     }
     setIsLoading(true);
@@ -89,8 +98,7 @@ export default function SignupForm() {
     } catch (error: any) {
       console.error("Signup error:", error);
       toast({ variant: "destructive", title: "Signup Failed", description: error.message || "An unexpected error occurred." });
-      if (recaptchaRef.current) recaptchaRef.current.reset();
-      setRecaptchaToken(null);
+      if (isRecaptchaEnabled && recaptchaRef.current) recaptchaRef.current.reset();
     } finally {
       setIsLoading(false);
     }
@@ -127,7 +135,7 @@ export default function SignupForm() {
     }
   };
 
-  const isSubmitDisabled = isLoading || isGoogleLoading || (isRecaptchaEnabled && !recaptchaToken);
+  const isSubmitDisabled = isLoading || isGoogleLoading;
 
 
   return (
@@ -222,11 +230,10 @@ export default function SignupForm() {
                 <ReCAPTCHA
                   ref={recaptchaRef}
                   sitekey={recaptchaSiteKey}
-                  onChange={handleRecaptchaChange}
+                  size="invisible" // For v3
                 />
-                {!recaptchaToken && <p className="text-sm font-medium text-destructive">Please complete the CAPTCHA.</p>}
-                <p className="text-xs text-muted-foreground mt-1">
-                  reCAPTCHA is for security. Server-side validation is required for true protection.
+                 <p className="text-xs text-muted-foreground mt-1">
+                  This site is protected by reCAPTCHA and the Google Privacy Policy and Terms of Service apply. Server-side validation is required for true protection.
                 </p>
               </FormItem>
             )}
