@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from 'react';
+import { useState, useRef } from 'react'; // Added useRef
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
@@ -18,16 +18,21 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
+import ReCAPTCHA from 'react-google-recaptcha';
 
 export default function LoginForm() {
   const router = useRouter();
   const { toast } = useToast();
-  const { refreshUserProfile, authInstance } = useAuth(); 
+  const { refreshUserProfile, authInstance } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isResendingVerification, setIsResendingVerification] = useState(false);
   const [showResendVerificationButtonForEmail, setShowResendVerificationButtonForEmail] = useState<string | null>(null);
+  const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
+  const recaptchaRef = useRef<ReCAPTCHA>(null);
 
+  const isRecaptchaEnabled = process.env.NEXT_PUBLIC_RECAPTCHA_ENABLED === "true";
+  const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(LoginFormSchema),
@@ -37,19 +42,21 @@ export default function LoginForm() {
     },
   });
 
+  const handleRecaptchaChange = (token: string | null) => {
+    setRecaptchaToken(token);
+  };
+
   const handleResendVerificationEmail = async (email: string) => {
     if (!authInstance || !authInstance.currentUser) {
         toast({ variant: "destructive", title: "Error", description: "Cannot resend verification email. User not signed in." });
         return;
     }
-    // Ensure we are trying to resend for the currently 'partially' signed-in user
     if (authInstance.currentUser.email !== email) {
         toast({ variant: "destructive", title: "Error", description: "Mismatch in email for resending verification." });
-        if (authInstance.currentUser) await signOut(authInstance); // Sign out if there's a mismatch
+        if (authInstance.currentUser) await signOut(authInstance);
         setShowResendVerificationButtonForEmail(null);
         return;
     }
-
     setIsResendingVerification(true);
     try {
         await sendEmailVerification(authInstance.currentUser);
@@ -58,7 +65,7 @@ export default function LoginForm() {
             description: `A new verification email has been sent to ${email}. Please check your inbox.`,
             duration: 7000,
         });
-        setShowResendVerificationButtonForEmail(null); // Hide button after successful resend
+        setShowResendVerificationButtonForEmail(null);
     } catch (error: any) {
         console.error("Error resending verification email:", error);
         toast({ variant: "destructive", title: "Resend Failed", description: error.message || "Could not resend verification email." });
@@ -68,36 +75,43 @@ export default function LoginForm() {
   };
 
   const onSubmit = async (values: LoginFormValues) => {
+    if (isRecaptchaEnabled && !recaptchaToken) {
+      toast({ variant: "destructive", title: "CAPTCHA Required", description: "Please complete the reCAPTCHA." });
+      return;
+    }
+    // IMPORTANT: In a real application, you would send the 'recaptchaToken'
+    // to your backend here to verify it with Google using your RECAPTCHA_SECRET_KEY.
+    // This client-side only check can be bypassed.
+
     if (!authInstance) {
       toast({ variant: "destructive", title: "Error", description: "Authentication service not ready. Please try again." });
       return;
     }
     setIsLoading(true);
-    setShowResendVerificationButtonForEmail(null); 
+    setShowResendVerificationButtonForEmail(null);
     try {
       const userCredential = await signInWithEmailAndPassword(authInstance, values.email, values.password);
       const user = userCredential.user;
 
       if (!user.emailVerified) {
-        toast({ 
-          variant: "destructive", 
-          title: "Email Not Verified", 
+        toast({
+          variant: "destructive",
+          title: "Email Not Verified",
           description: "Please verify your email address. Check your inbox for the verification link.",
           duration: 7000
         });
-        setShowResendVerificationButtonForEmail(user.email); // Show resend button
-        // Don't sign out immediately, allow them to click resend
+        setShowResendVerificationButtonForEmail(user.email);
         setIsLoading(false);
-        return; // Stop login process
+        if (recaptchaRef.current) recaptchaRef.current.reset(); // Reset CAPTCHA
+        setRecaptchaToken(null);
+        return;
       }
 
       await refreshUserProfile();
       toast({ title: "Login Successful", description: "Welcome back! Redirecting..." });
       router.push('/');
-    } catch (error: any)
-     {
+    } catch (error: any) {
       console.error("Login error:", error);
-      // Handle specific error codes if needed, e.g., auth/user-not-found, auth/wrong-password
       if (error.code === 'auth/user-disabled') {
         toast({ variant: "destructive", title: "Account Disabled", description: "Your account has been disabled. Please contact support." });
       } else if (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
@@ -106,8 +120,9 @@ export default function LoginForm() {
       else {
         toast({ variant: "destructive", title: "Login Failed", description: error.message || "An unexpected error occurred." });
       }
+       if (recaptchaRef.current) recaptchaRef.current.reset();
+       setRecaptchaToken(null);
     } finally {
-      // Only set isLoading to false if not waiting for resend button
       if (showResendVerificationButtonForEmail === null) {
         setIsLoading(false);
       }
@@ -125,7 +140,6 @@ export default function LoginForm() {
     try {
       const result = await signInWithPopup(authInstance, provider);
       const user = result.user;
-      // Google users are generally considered email verified
       if (user) {
         await saveUserData(user, { email: user.email, displayName: user.displayName, photoURL: user.photoURL });
         await refreshUserProfile();
@@ -134,9 +148,9 @@ export default function LoginForm() {
       }
     } catch (error: any) {
       console.error("Google Sign-in error:", error);
+      console.warn("Google Sign-in specific error: " + error.code + ". This often relates to browser pop-up blockers, extensions, or OAuth configuration (e.g., Authorized JavaScript Origins in Google Cloud Console). Check browser console for the full error object logged above.");
       let description = "An unexpected error occurred during Google Sign-in.";
       if (error.code === 'auth/popup-closed-by-user') {
-        console.warn("Google Sign-in specific error: auth/popup-closed-by-user. This often relates to browser pop-up blockers, extensions, or OAuth configuration (e.g., Authorized JavaScript Origins in Google Cloud Console). Check browser console for the full error object logged above.");
         description = "Google Sign-in could not complete. The popup window may have been closed or blocked. Please check your browser settings (e.g., pop-up blockers) and try again.";
       } else if (error.message) {
         description = error.message;
@@ -146,6 +160,8 @@ export default function LoginForm() {
       setIsGoogleLoading(false);
     }
   };
+
+  const isSubmitDisabled = isLoading || isGoogleLoading || isResendingVerification || (isRecaptchaEnabled && !recaptchaToken);
 
   return (
     <Card className="w-full max-w-md shadow-xl">
@@ -182,9 +198,22 @@ export default function LoginForm() {
                 </FormItem>
               )}
             />
+            {isRecaptchaEnabled && recaptchaSiteKey && (
+              <FormItem>
+                <ReCAPTCHA
+                  ref={recaptchaRef}
+                  sitekey={recaptchaSiteKey}
+                  onChange={handleRecaptchaChange}
+                />
+                {!recaptchaToken && <p className="text-sm font-medium text-destructive">Please complete the CAPTCHA.</p>}
+                <p className="text-xs text-muted-foreground mt-1">
+                  reCAPTCHA is for security. Server-side validation is required for true protection.
+                </p>
+              </FormItem>
+            )}
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
-            <Button type="submit" className="w-full" disabled={isLoading || isGoogleLoading || isResendingVerification}>
+            <Button type="submit" className="w-full" disabled={isSubmitDisabled}>
               {isLoading ? <Loader2 className="animate-spin" /> : 'Log In'}
             </Button>
             {showResendVerificationButtonForEmail && (

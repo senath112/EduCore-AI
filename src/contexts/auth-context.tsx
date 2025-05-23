@@ -6,7 +6,7 @@ import { createContext, useState, useEffect, useCallback } from 'react';
 import type { User, Auth } from 'firebase/auth';
 import { getAuth, onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
 import { app } from '@/lib/firebase';
-import { getUserProfile, updateUserCredits, type UserProfile, saveUserData } from '@/services/user-service';
+import { getUserProfile, updateUserCredits, type UserProfile, saveUserData, updateUserActivityAndStreak } from '@/services/user-service';
 import { Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 
@@ -18,7 +18,9 @@ type AuthContextType = {
   profileLoading: boolean; // Specific to profile fetching
   logout: () => Promise<void>;
   deductCreditForAITutor: () => Promise<boolean>;
+  deductCreditForFlashcards: (amountToDeduct: number) => Promise<boolean>;
   refreshUserProfile: () => Promise<void>;
+  triggerStreakUpdate: () => Promise<void>;
   promptForUserDetails: boolean;
   setPromptForUserDetails: (value: boolean) => void;
 };
@@ -53,18 +55,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setPromptForUserDetails(false);
           }
         } else {
-          // If profile is null (e.g., first-time Google Sign-In user before saveUserData completes fully or if DB read fails)
-          // For Google users, saveUserData is called in login/signup forms.
-          // If it's null here, it might be a race condition or an error.
-          // The CompleteProfileDialog logic will primarily rely on this `promptForUserDetails`.
           const isGoogleUser = currentUser.providerData.some(p => p.providerId === 'google.com');
            if (isGoogleUser) {
-             // This scenario is tricky. If saveUserData in form hasn't created a profile yet,
-             // `getUserProfile` returns null. The dialog might be needed.
-             // Let's assume saveUserData during login handles initial profile for Google users.
-             // If a Google user has no profile and is NOT missing details (because there are no details),
-             // we should still prompt.
-             // The key is if profile itself is null, and it's a Google user, they might need to complete it.
              setPromptForUserDetails(true);
            } else {
             setPromptForUserDetails(false);
@@ -90,12 +82,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsubscribe = onAuthStateChanged(authInstance, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
-        // For a new user signing up with Google, saveUserData might not have completed yet
-        // from the signup form when onAuthStateChanged first fires.
-        // Fetching profile here ensures we get the latest.
         await fetchUserProfile(currentUser);
       } else {
-        // User logged out
         setUserProfile(null);
         setPromptForUserDetails(false);
         setProfileLoading(false);
@@ -111,7 +99,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setUserProfile(null);
       setPromptForUserDetails(false);
-      // router.push('/login'); // Handled by page components
     } catch (error) {
       console.error("Error signing out: ", error);
       toast({ variant: "destructive", title: "Logout Failed", description: "Could not sign you out." });
@@ -124,24 +111,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return false;
     }
     
-    // Admins and Teachers have unlimited credits - bypass deduction
     if (userProfile.isAdmin || userProfile.isTeacher) {
-      console.log("Admin or Teacher user: credit deduction bypassed.");
+      console.log("Admin or Teacher user (AI Tutor): credit deduction bypassed.");
       return true;
     }
 
     if (typeof userProfile.credits !== 'number' || userProfile.credits <= 0) {
-      console.log("User has no credits to deduct.");
+      console.log("User has no credits to deduct for AI Tutor.");
       return false;
     }
     
     const newCreditAmount = userProfile.credits - 1;
     try {
       await updateUserCredits(user.uid, newCreditAmount);
-      setUserProfile(prevProfile => prevProfile ? { ...prevProfile, credits: newCreditAmount, lastUpdatedAt: new Date().toISOString() } : null);
+      await refreshUserProfile(); 
       return true;
     } catch (error) {
-      console.error("Failed to deduct credit:", error);
+      console.error("Failed to deduct credit for AI Tutor:", error);
+      return false;
+    }
+  };
+
+  const deductCreditForFlashcards = async (amountToDeduct: number): Promise<boolean> => {
+    if (!user || userProfile === null) {
+      console.warn("Deduct credit for flashcards called without user or profile.");
+      return false;
+    }
+    if (userProfile.isAdmin || userProfile.isTeacher) {
+      console.log("Admin or Teacher user (Flashcards): credit deduction bypassed.");
+      return true;
+    }
+    if (typeof userProfile.credits !== 'number' || userProfile.credits < amountToDeduct) {
+      console.log(`User has insufficient credits for flashcards. Needs ${amountToDeduct}, has ${userProfile.credits}.`);
+      return false;
+    }
+    const newCreditAmount = userProfile.credits - amountToDeduct;
+    try {
+      await updateUserCredits(user.uid, newCreditAmount);
+      await refreshUserProfile(); 
+      return true;
+    } catch (error) {
+      console.error("Failed to deduct credit for flashcards:", error);
       return false;
     }
   };
@@ -151,6 +161,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await fetchUserProfile(user);
     }
   }, [user, fetchUserProfile]);
+
+  const triggerStreakUpdate = useCallback(async () => {
+    if (user) {
+      try {
+        await updateUserActivityAndStreak(user.uid);
+        await refreshUserProfile(); // Refresh profile to show updated streak
+      } catch (error) {
+        console.error("Failed to trigger streak update via context:", error);
+        // Optionally show a toast to the user if this fails silently
+      }
+    }
+  }, [user, refreshUserProfile]);
 
 
   if (loading) {
@@ -170,7 +192,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profileLoading,
       logout,
       deductCreditForAITutor,
+      deductCreditForFlashcards,
       refreshUserProfile,
+      triggerStreakUpdate,
       promptForUserDetails,
       setPromptForUserDetails
     }}>

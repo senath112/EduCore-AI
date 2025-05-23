@@ -4,11 +4,10 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { CreateQuizFormSchema, type CreateQuizFormValues } from '@/lib/schemas';
+import { CreateForumTopicSchema, type CreateForumTopicFormValues } from '@/lib/schemas';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
-import { createQuiz } from '@/services/quiz-service';
-import type { ClassData } from '@/services/class-service';
+import { createForumTopic } from '@/services/forum-service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,71 +20,61 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Loader2, FilePlus2 } from 'lucide-react';
+import { Loader2, PlusCircle } from 'lucide-react';
 
-interface CreateQuizDialogProps {
+interface CreateForumTopicDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  classData: Pick<ClassData, 'id' | 'name'> | null;
-  onQuizCreated: (result: { quizId: string; friendlyId: string }) => void; // Updated signature
+  onTopicCreated: () => void;
 }
 
-export default function CreateQuizDialog({ 
-  isOpen, 
-  onOpenChange, 
-  classData, 
-  onQuizCreated 
-}: CreateQuizDialogProps) {
+export default function CreateForumTopicDialog({ isOpen, onOpenChange, onTopicCreated }: CreateForumTopicDialogProps) {
   const { user, userProfile } = useAuth();
   const { toast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const form = useForm<CreateQuizFormValues>({
-    resolver: zodResolver(CreateQuizFormSchema),
+  const form = useForm<CreateForumTopicFormValues>({
+    resolver: zodResolver(CreateForumTopicSchema),
     defaultValues: {
       title: '',
       description: '',
     },
   });
 
-  const onSubmit = async (values: CreateQuizFormValues) => {
-    if (!user || !userProfile || !classData) {
-      toast({ variant: "destructive", title: "Error", description: "User or class information is missing." });
+  const onSubmit = async (values: CreateForumTopicFormValues) => {
+    if (!user || !userProfile) {
+      toast({ variant: "destructive", title: "Error", description: "You must be logged in to create a topic." });
       return;
     }
     setIsProcessing(true);
     try {
-      const result = await createQuiz({ // createQuiz now returns quizId and friendlyId
-        classId: classData.id,
-        className: classData.name,
-        teacherId: user.uid,
-        teacherName: userProfile.displayName || user.email || "Unknown Teacher",
-        title: values.title,
-        description: values.description,
-      });
-      toast({ title: "Quiz Created!", description: `Quiz "${values.title}" (ID: ${result.friendlyId}) has been created for class "${classData.name}".` });
-      onQuizCreated(result); // Pass the full result
+      await createForumTopic(
+        values.title,
+        values.description,
+        user.uid,
+        userProfile.displayName || user.email
+      );
+      toast({ title: "Topic Created!", description: `Your new topic "${values.title}" has been created.` });
+      onTopicCreated(); // Callback to refresh the list on the parent page
       form.reset();
-      onOpenChange(false);
+      onOpenChange(false); // Close the dialog
     } catch (error: any) {
-      console.error("Error creating quiz:", error);
-      toast({ variant: "destructive", title: "Creation Failed", description: error.message || "Could not create the quiz." });
+      console.error("Error creating forum topic:", error);
+      toast({ variant: "destructive", title: "Creation Failed", description: error.message || "Could not create the topic." });
     } finally {
       setIsProcessing(false);
     }
   };
-
-  if (!classData) return null;
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <FilePlus2 className="h-6 w-6" /> Create New Quiz for {classData.name}
+            <PlusCircle className="h-6 w-6" /> Create New Forum Topic
           </DialogTitle>
           <DialogDescription>
-            Fill in the details below to create a new quiz. A 4-character Friendly ID will also be generated. You can add questions later.
+            Provide a clear title and a brief description for your new discussion topic.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -95,9 +84,9 @@ export default function CreateQuizDialog({
               name="title"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Quiz Title</FormLabel>
+                  <FormLabel>Topic Title</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g., Chapter 1 Review" {...field} disabled={isProcessing} />
+                    <Input placeholder="e.g., Tips for A/L Physics Revision" {...field} disabled={isProcessing} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -108,10 +97,10 @@ export default function CreateQuizDialog({
               name="description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Quiz Description</FormLabel>
+                  <FormLabel>Topic Description</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="A brief overview of the quiz content..."
+                      placeholder="A short summary of what this topic is about..."
                       className="min-h-[100px]"
                       disabled={isProcessing}
                       {...field}
@@ -126,7 +115,7 @@ export default function CreateQuizDialog({
                 Cancel
               </Button>
               <Button type="submit" disabled={isProcessing}>
-                {isProcessing ? <Loader2 className="animate-spin" /> : 'Create Quiz'}
+                {isProcessing ? <Loader2 className="animate-spin" /> : 'Create Topic'}
               </Button>
             </DialogFooter>
           </form>

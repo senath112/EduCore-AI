@@ -4,10 +4,12 @@
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
-import { Loader2, ShieldAlert, School, PlusCircle, BookCopy, Ticket, Users, BarChart3, CheckCircle, XCircle, Clock, CircleDollarSign, Trash2, FilePlus2, ClipboardList, PencilLine, ListChecks, UploadCloud, ExternalLink, FileEdit } from 'lucide-react';
+import { Loader2, ShieldAlert, School, PlusCircle, BookCopy, Ticket, Users, BarChart3, CheckCircle, XCircle, Clock, CircleDollarSign, Trash2, FilePlus2, ClipboardList, PencilLine, ListChecks, UploadCloud, ExternalLink, FileEdit, Download as DownloadIcon } from 'lucide-react'; // Renamed Download to DownloadIcon
 import { Button, buttonVariants } from '@/components/ui/button';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import CreateClassDialog from '@/components/teacher/create-class-dialog';
 import GenerateVouchersDialog from '@/components/teacher/generate-vouchers-dialog';
 import CreateQuizDialog from '@/components/teacher/create-quiz-dialog'; 
@@ -18,6 +20,7 @@ import { getClassesByTeacher, deleteClass, type ClassData, approveJoinRequest, d
 import { getAllUserProfiles, type UserProfileWithId } from '@/services/user-service'; 
 import { getAllCreditVouchers, type CreditVoucher } from '@/services/voucher-service';
 import { getQuizzesForClass, type QuizData, publishQuiz, unpublishQuiz } from '@/services/quiz-service'; 
+import { generateVoucherSlipsPDF } from '@/lib/voucherUtils'; // Import PDF utility
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from '@/components/ui/badge';
@@ -73,6 +76,10 @@ export default function TeacherDashboardPage() {
   const [selectedQuizForBulkAdd, setSelectedQuizForBulkAdd] = useState<{ id: string, title: string } | null>(null);
 
   const [processingQuizStatusChange, setProcessingQuizStatusChange] = useState<string | null>(null);
+
+  // State for downloading voucher batch by ID
+  const [batchIdInput, setBatchIdInput] = useState('');
+  const [isDownloadingSpecificBatch, setIsDownloadingSpecificBatch] = useState(false);
 
 
   const isLoading = loading || profileLoading;
@@ -155,7 +162,7 @@ export default function TeacherDashboardPage() {
     fetchTeacherData(); 
   };
 
-  const handleVouchersGenerated = (vouchers: CreditVoucher[]) => {
+  const handleVouchersGenerated = (result: { vouchers: CreditVoucher[]; batchId: string }) => {
     fetchTeacherData(); 
   };
 
@@ -247,6 +254,29 @@ export default function TeacherDashboardPage() {
       setProcessingQuizStatusChange(null);
     }
   };
+
+  const handleDownloadSpecificBatch = async () => {
+    if (!batchIdInput.trim()) {
+      toast({ variant: "destructive", title: "Input Required", description: "Please enter a Batch ID." });
+      return;
+    }
+    if (!userProfile?.displayName) {
+      toast({ variant: "destructive", title: "User Error", description: "Teacher name not available for PDF generation." });
+      return;
+    }
+    setIsDownloadingSpecificBatch(true);
+    const enteredBatchId = batchIdInput.trim().toUpperCase();
+    const vouchersForBatch = teacherVouchers.filter(v => v.batchId === enteredBatchId);
+
+    if (vouchersForBatch.length > 0) {
+      generateVoucherSlipsPDF(vouchersForBatch, userProfile.displayName, enteredBatchId, toast);
+    } else {
+      toast({ variant: "destructive", title: "Not Found", description: `No vouchers found for Batch ID: ${enteredBatchId}` });
+    }
+    setIsDownloadingSpecificBatch(false);
+    setBatchIdInput(''); // Clear input after attempt
+  };
+
 
   const totalGeneratedVouchers = teacherVouchers.length;
   const totalRedeemedVouchers = teacherVouchers.filter(v => v.status === 'redeemed').length;
@@ -468,7 +498,7 @@ export default function TeacherDashboardPage() {
                             {quizzesForThisClass.map(quiz => (
                               <li key={quiz.id} className="p-2.5 border rounded-md text-sm bg-muted/30 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                                 <div>
-                                  <p className="font-medium">{quiz.title} (Questions: {Object.keys(quiz.questions || {}).length})</p>
+                                  <p className="font-medium">{quiz.title}{quiz.friendlyId ? ` (ID: ${quiz.friendlyId})` : ''} (Questions: {Object.keys(quiz.questions || {}).length})</p>
                                   <p className="text-xs text-muted-foreground truncate max-w-xs">{quiz.description}</p>
                                   <Badge variant={quiz.status === 'published' ? 'default' : 'outline'} className="mt-1 text-xs capitalize">{quiz.status}</Badge>
                                 </div>
@@ -584,6 +614,7 @@ export default function TeacherDashboardPage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Voucher Code</TableHead>
+                        <TableHead>Batch ID</TableHead>
                         <TableHead className="text-center">Credits</TableHead>
                         <TableHead>Restricted to Class</TableHead>
                         <TableHead>Status</TableHead>
@@ -596,6 +627,7 @@ export default function TeacherDashboardPage() {
                       {teacherVouchers.map((voucher) => (
                         <TableRow key={voucher.id}>
                           <TableCell className="font-medium font-mono">{voucher.id}</TableCell>
+                          <TableCell className="font-mono text-xs">{voucher.batchId}</TableCell>
                           <TableCell className="text-center">{voucher.credits}</TableCell>
                           <TableCell>{voucher.restrictedToClassName || 'N/A'}</TableCell>
                           <TableCell>
@@ -615,6 +647,38 @@ export default function TeacherDashboardPage() {
             </>
           )}
         </section>
+
+        <section className="mb-10 p-4 border rounded-lg shadow-sm bg-card">
+          <div className="flex items-center justify-between gap-3 mb-6">
+            <div className="flex items-center gap-3">
+                <DownloadIcon className="h-7 w-7 text-secondary" />
+                <h2 className="text-2xl font-semibold text-card-foreground">Download Voucher Batch PDF</h2>
+            </div>
+          </div>
+            <div className="space-y-3">
+                <div>
+                    <Label htmlFor="batchIdInput" className="text-sm">Enter Batch ID</Label>
+                    <Input
+                        id="batchIdInput"
+                        type="text"
+                        placeholder="e.g., B-XYZ123"
+                        value={batchIdInput}
+                        onChange={(e) => setBatchIdInput(e.target.value.toUpperCase())}
+                        className="mt-1 uppercase"
+                        disabled={isDownloadingSpecificBatch}
+                    />
+                </div>
+                <Button
+                    onClick={handleDownloadSpecificBatch}
+                    disabled={isDownloadingSpecificBatch || !batchIdInput.trim()}
+                    className="w-full"
+                >
+                    {isDownloadingSpecificBatch ? <Loader2 className="animate-spin" /> : <DownloadIcon className="mr-2 h-4 w-4" />}
+                    Download PDF for Batch
+                </Button>
+            </div>
+        </section>
+
       </div>
       <CreateClassDialog
         isOpen={isCreateClassDialogOpen}
@@ -686,8 +750,3 @@ export default function TeacherDashboardPage() {
     </>
   );
 }
-
-    
-
-    
-

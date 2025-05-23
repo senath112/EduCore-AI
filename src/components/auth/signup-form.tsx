@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from 'react';
+import { useState, useRef } from 'react'; // Added useRef
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
@@ -18,6 +18,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
+import ReCAPTCHA from 'react-google-recaptcha';
 
 const DEFAULT_SIGNUP_CREDITS = 10;
 
@@ -27,6 +28,11 @@ export default function SignupForm() {
   const { refreshUserProfile, authInstance } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
+  const recaptchaRef = useRef<ReCAPTCHA>(null);
+
+  const isRecaptchaEnabled = process.env.NEXT_PUBLIC_RECAPTCHA_ENABLED === "true";
+  const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
 
   const form = useForm<SignupFormValues>({
     resolver: zodResolver(SignupFormSchema),
@@ -40,7 +46,19 @@ export default function SignupForm() {
     },
   });
 
+  const handleRecaptchaChange = (token: string | null) => {
+    setRecaptchaToken(token);
+  };
+
   const onSubmit = async (values: SignupFormValues) => {
+    if (isRecaptchaEnabled && !recaptchaToken) {
+      toast({ variant: "destructive", title: "CAPTCHA Required", description: "Please complete the reCAPTCHA." });
+      return;
+    }
+    // IMPORTANT: In a real application, you would send the 'recaptchaToken'
+    // to your backend here to verify it with Google using your RECAPTCHA_SECRET_KEY.
+    // This client-side only check can be bypassed.
+
     if (!authInstance) {
       toast({ variant: "destructive", title: "Error", description: "Authentication service not ready. Please try again." });
       return;
@@ -57,20 +75,22 @@ export default function SignupForm() {
           email: values.email,
           credits: DEFAULT_SIGNUP_CREDITS,
         });
-        
+
         await sendEmailVerification(user);
-        toast({ 
-          title: "Signup Successful!", 
+        toast({
+          title: "Signup Successful!",
           description: `A verification email has been sent to ${user.email}. Please verify your email before logging in.`,
-          duration: 10000 
+          duration: 10000
         });
 
-        await signOut(authInstance); // Sign out the user to force verification
-        router.push('/login'); // Redirect to login page
+        await signOut(authInstance);
+        router.push('/login');
       }
     } catch (error: any) {
       console.error("Signup error:", error);
       toast({ variant: "destructive", title: "Signup Failed", description: error.message || "An unexpected error occurred." });
+      if (recaptchaRef.current) recaptchaRef.current.reset();
+      setRecaptchaToken(null);
     } finally {
       setIsLoading(false);
     }
@@ -86,12 +106,7 @@ export default function SignupForm() {
     try {
       const result = await signInWithPopup(authInstance, provider);
       const user = result.user;
-      // Google users are typically considered email verified by default if their Google account is.
-      // No explicit sendEmailVerification call needed here usually.
       if (user) {
-        // Check if this is the first sign-in for this Google user by trying to get their profile
-        // If no profile, saveUserData will create one with initial details.
-        // This is a simplified check; a more robust way would involve checking creationTime vs lastSignInTime.
         await saveUserData(user, { email: user.email, displayName: user.displayName, photoURL: user.photoURL, credits: DEFAULT_SIGNUP_CREDITS });
         await refreshUserProfile();
         toast({ title: "Google Sign-in Successful", description: "Welcome! Redirecting to the app..." });
@@ -99,9 +114,9 @@ export default function SignupForm() {
       }
     } catch (error: any) {
       console.error("Google Sign-in error:", error);
+      console.warn("Google Sign-in specific error: " + error.code + ". This often relates to browser pop-up blockers, extensions, or OAuth configuration (e.g., Authorized JavaScript Origins in Google Cloud Console). Check browser console for the full error object logged above.");
       let description = "An unexpected error occurred during Google Sign-in.";
       if (error.code === 'auth/popup-closed-by-user') {
-        console.warn("Google Sign-in specific error: auth/popup-closed-by-user. This often relates to browser pop-up blockers, extensions, or OAuth configuration (e.g., Authorized JavaScript Origins in Google Cloud Console). Check browser console for the full error object logged above.");
         description = "Google Sign-in could not complete. The popup window may have been closed or blocked. Please check your browser settings (e.g., pop-up blockers) and try again.";
       } else if (error.message) {
         description = error.message;
@@ -111,6 +126,9 @@ export default function SignupForm() {
       setIsGoogleLoading(false);
     }
   };
+
+  const isSubmitDisabled = isLoading || isGoogleLoading || (isRecaptchaEnabled && !recaptchaToken);
+
 
   return (
     <Card className="w-full max-w-md shadow-xl">
@@ -199,9 +217,22 @@ export default function SignupForm() {
                 </FormItem>
               )}
             />
+            {isRecaptchaEnabled && recaptchaSiteKey && (
+              <FormItem>
+                <ReCAPTCHA
+                  ref={recaptchaRef}
+                  sitekey={recaptchaSiteKey}
+                  onChange={handleRecaptchaChange}
+                />
+                {!recaptchaToken && <p className="text-sm font-medium text-destructive">Please complete the CAPTCHA.</p>}
+                <p className="text-xs text-muted-foreground mt-1">
+                  reCAPTCHA is for security. Server-side validation is required for true protection.
+                </p>
+              </FormItem>
+            )}
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
-            <Button type="submit" className="w-full" disabled={isLoading || isGoogleLoading}>
+            <Button type="submit" className="w-full" disabled={isSubmitDisabled}>
               {isLoading ? <Loader2 className="animate-spin" /> : 'Sign Up'}
             </Button>
             <Button variant="outline" type="button" className="w-full" onClick={handleGoogleSignIn} disabled={isLoading || isGoogleLoading}>

@@ -21,7 +21,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { User as UserIcon, LogOut, LogIn, CircleDollarSign, Settings, CalendarDays, Phone, UserRound, Sun, Moon, ShieldCheck, LifeBuoy, School, BookOpen, Layers } from 'lucide-react'; 
+import { User as UserIcon, LogOut, LogIn, CircleDollarSign, Settings, CalendarDays, Phone, UserRound, Sun, Moon, ShieldCheck, LifeBuoy, School, BookOpen, Layers, MessageSquare, Flame } from 'lucide-react'; 
 import { useRouter } from 'next/navigation';
 
 
@@ -70,6 +70,12 @@ export default function Header() {
                   <Badge variant="secondary" className="flex items-center gap-1 pl-2 pr-2 py-1 text-sm">
                     <CircleDollarSign className="h-4 w-4 text-primary" />
                     {userProfile.credits} Credits
+                  </Badge>
+                )}
+                 {userProfile && userProfile.currentStreak && userProfile.currentStreak > 0 && !(userProfile.isAdmin || userProfile.isTeacher) && (
+                  <Badge variant="outline" className="flex items-center gap-1 pl-2 pr-2 py-1 text-sm border-orange-500 text-orange-600">
+                    <Flame className="h-4 w-4 text-orange-500" />
+                    {userProfile.currentStreak} Day Streak
                   </Badge>
                 )}
                 {userProfile && (userProfile.isAdmin || userProfile.isTeacher) && (
@@ -138,6 +144,10 @@ export default function Header() {
                     <DropdownMenuItem onClick={() => router.push('/classes')}>
                       <BookOpen className="mr-2 h-4 w-4" />
                       <span>My Classes</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => router.push('/forum')}>
+                      <MessageSquare className="mr-2 h-4 w-4" />
+                      <span>Forum</span>
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => setIsSettingsDialogOpen(true)}>
                       <Settings className="mr-2 h-4 w-4" />

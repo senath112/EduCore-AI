@@ -1,8 +1,8 @@
 
 "use client";
 
-import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useState, useMemo } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/hooks/use-auth';
@@ -12,8 +12,8 @@ import { generateFlashcards, type Flashcard } from '@/ai/flows/generate-flashcar
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Loader2, Layers, ArrowLeft, ArrowRight, RefreshCw, LogIn, Download } from 'lucide-react';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
+import { Loader2, Layers, ArrowLeft, ArrowRight, RefreshCw, LogIn, Download, CircleDollarSign } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from "@/lib/utils";
 import jsPDF from 'jspdf';
@@ -42,8 +42,10 @@ const FLASHCARD_BACKGROUND_COLORS = [
   'bg-orange-100 dark:bg-orange-700',
 ];
 
+const FLASHCARD_CREDIT_COST_PER_CARD = 5;
+
 export default function FlashcardGeneratorPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, userProfile, loading: authLoading, profileLoading, deductCreditForFlashcards, triggerStreakUpdate } = useAuth();
   const { subject, language } = useSettings();
   const { toast } = useToast();
 
@@ -63,17 +65,54 @@ export default function FlashcardGeneratorPage() {
     },
   });
 
+  const numberOfFlashcardsToGenerate = useWatch({
+    control: form.control,
+    name: 'numberOfFlashcards',
+  });
+
+  const calculatedCost = useMemo(() => {
+    const num = Number(numberOfFlashcardsToGenerate);
+    if (isNaN(num) || num < 1) return 0;
+    return num * FLASHCARD_CREDIT_COST_PER_CARD;
+  }, [numberOfFlashcardsToGenerate]);
+
+  const hasSufficientCredits = useMemo(() => {
+    if (!userProfile || userProfile.isAdmin || userProfile.isTeacher) return true; // Admins/Teachers bypass
+    return (userProfile.credits ?? 0) >= calculatedCost;
+  }, [userProfile, calculatedCost]);
+
   const onSubmit = async (values: GenerateFlashcardsFormValues) => {
-    if (!user) {
+    if (!user || !userProfile) {
       toast({ variant: "destructive", title: "Not Logged In", description: "You must be logged in to generate flashcards." });
       return;
     }
+    if (profileLoading) {
+        toast({ title: "Profile loading", description: "Please wait a moment and try again." });
+        return;
+    }
+
+    const cost = values.numberOfFlashcards * FLASHCARD_CREDIT_COST_PER_CARD;
+
+    if (!userProfile.isAdmin && !userProfile.isTeacher) {
+      if ((userProfile.credits ?? 0) < cost) {
+        toast({ variant: "destructive", title: "Insufficient Credits", description: `You need ${cost} credits to generate ${values.numberOfFlashcards} flashcards. You have ${userProfile.credits ?? 0}.` });
+        return;
+      }
+      
+      const deductionSuccess = await deductCreditForFlashcards(cost);
+      if (!deductionSuccess) {
+        toast({ variant: "destructive", title: "Credit Deduction Failed", description: "Could not deduct credits. Please try again or check your balance." });
+        setIsLoading(false);
+        return;
+      }
+    }
+    
     setIsLoading(true);
     setGeneratedFlashcards([]);
     setCurrentCardIndex(0);
     setIsCardFlipped(false);
     setCurrentTopic(values.topic);
-
+    await triggerStreakUpdate(); // Update activity streak
 
     try {
       const result = await generateFlashcards({
@@ -131,15 +170,14 @@ export default function FlashcardGeneratorPage() {
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 15;
-      const cardWidth = (pageWidth - (3 * margin)) / 2; // Two cards per row
-      const cardHeight = 60; // Approximate height for a flashcard
+      const cardWidth = (pageWidth - (3 * margin)) / 2; 
+      const cardHeight = 60; 
       const headerHeight = 25;
       let yPos = margin + headerHeight;
       let xPos = margin;
       let cardsOnPage = 0;
       const maxCardsPerRow = 2;
 
-      // PDF Header
       doc.setFontSize(18);
       doc.text("EduCore AI - Flashcards", pageWidth / 2, margin, { align: 'center' });
       doc.setFontSize(12);
@@ -147,42 +185,36 @@ export default function FlashcardGeneratorPage() {
       doc.text(`Generated: ${format(new Date(), 'PPP p')}`, pageWidth / 2, margin + 14, { align: 'center' });
 
 
-      generatedFlashcards.forEach((flashcard, index) => {
-        if (yPos + cardHeight > pageHeight - margin) { // Check for new page
+      generatedFlashcards.forEach((flashcard) => {
+        if (yPos + cardHeight > pageHeight - margin) { 
           doc.addPage();
           yPos = margin;
           xPos = margin;
           cardsOnPage = 0;
-          // Re-add header on new page if desired
           doc.setFontSize(18);
           doc.text("EduCore AI - Flashcards (Continued)", pageWidth / 2, margin, { align: 'center' });
           doc.setFontSize(12);
           doc.text(`Topic: ${currentTopic}`, pageWidth / 2, margin + 7, { align: 'center' });
-          yPos = margin + headerHeight -7; // Adjust yPos after header on new page
+          yPos = margin + headerHeight -7; 
         }
 
-        // Draw card outline
-        doc.setDrawColor(150); // Light gray border
+        doc.setDrawColor(150); 
         doc.setLineWidth(0.3);
-        doc.rect(xPos, yPos, cardWidth, cardHeight, 'S'); // 'S' for stroke
+        doc.rect(xPos, yPos, cardWidth, cardHeight, 'S'); 
 
-        // Card Content
         doc.setFontSize(10);
-        doc.setTextColor(0); // Black text
+        doc.setTextColor(0); 
 
-        // Front
         doc.setFont("helvetica", "bold");
         doc.text("Front:", xPos + 5, yPos + 10);
         doc.setFont("helvetica", "normal");
         const frontTextLines = doc.splitTextToSize(flashcard.front, cardWidth - 10);
         doc.text(frontTextLines, xPos + 5, yPos + 15);
 
-        // Separator (optional)
         doc.setLineDashPattern([1, 1], 0);
         doc.line(xPos + 5, yPos + cardHeight / 2 + 3, xPos + cardWidth - 5, yPos + cardHeight / 2 + 3);
         doc.setLineDashPattern([], 0);
 
-        // Back
         doc.setFont("helvetica", "bold");
         doc.text("Back:", xPos + 5, yPos + cardHeight / 2 + 13);
         doc.setFont("helvetica", "normal");
@@ -190,10 +222,10 @@ export default function FlashcardGeneratorPage() {
         doc.text(backTextLines, xPos + 5, yPos + cardHeight / 2 + 18);
 
         cardsOnPage++;
-        if (cardsOnPage % maxCardsPerRow === 0) { // New row
+        if (cardsOnPage % maxCardsPerRow === 0) { 
           xPos = margin;
-          yPos += cardHeight + 5; // Add some space between rows
-        } else { // Next card in the same row
+          yPos += cardHeight + 5; 
+        } else { 
           xPos += cardWidth + margin;
         }
       });
@@ -234,6 +266,7 @@ export default function FlashcardGeneratorPage() {
   }
   
   const currentCard = generatedFlashcards[currentCardIndex];
+  const isGenerateButtonDisabled = isLoading || profileLoading || (!hasSufficientCredits && !userProfile?.isAdmin && !userProfile?.isTeacher);
 
   return (
     <div className="w-full max-w-2xl mx-auto flex flex-col flex-grow">
@@ -245,6 +278,7 @@ export default function FlashcardGeneratorPage() {
           </CardTitle>
           <CardDescription>
             Enter a topic for your current subject ({subject}) and language ({language}) to generate study flashcards.
+            Each flashcard costs {FLASHCARD_CREDIT_COST_PER_CARD} credits.
           </CardDescription>
         </CardHeader>
         <Form {...form}>
@@ -257,7 +291,7 @@ export default function FlashcardGeneratorPage() {
                   <FormItem>
                     <FormLabel>Topic</FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g., Photosynthesis, Newton's Laws" {...field} disabled={isLoading} />
+                      <Input placeholder="e.g., Photosynthesis, Newton's Laws" {...field} disabled={isLoading || profileLoading} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -270,15 +304,21 @@ export default function FlashcardGeneratorPage() {
                   <FormItem>
                     <FormLabel>Number of Flashcards (1-10)</FormLabel>
                     <FormControl>
-                      <Input type="number" min="1" max="10" {...field} disabled={isLoading} />
+                      <Input type="number" min="1" max="10" {...field} disabled={isLoading || profileLoading} />
                     </FormControl>
+                    <FormDescription className="flex items-center gap-1 text-xs pt-1">
+                      <CircleDollarSign className="h-3.5 w-3.5" />
+                       Cost: {calculatedCost} credits. 
+                       {userProfile && !userProfile.isAdmin && !userProfile.isTeacher && ` Your balance: ${userProfile.credits ?? 0} credits.`}
+                       {(userProfile?.isAdmin || userProfile?.isTeacher) && " (Free for Admins/Teachers)"}
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
             </CardContent>
             <CardFooter className="flex-col sm:flex-row gap-2">
-              <Button type="submit" className="w-full sm:w-auto" disabled={isLoading}>
+              <Button type="submit" className="w-full sm:w-auto" disabled={isGenerateButtonDisabled}>
                 {isLoading ? <Loader2 className="animate-spin" /> : "Generate Flashcards"}
               </Button>
               <Button 
@@ -296,10 +336,10 @@ export default function FlashcardGeneratorPage() {
         </Form>
       </Card>
 
-      {isLoading && (
+      {(isLoading || profileLoading && !user) && (
         <div className="flex justify-center items-center py-10">
           <Loader2 className="h-10 w-10 animate-spin text-primary" />
-          <p className="ml-3 text-muted-foreground">Generating flashcards...</p>
+          <p className="ml-3 text-muted-foreground">{profileLoading && !user ? "Loading user data..." : "Generating flashcards..."}</p>
         </div>
       )}
 
@@ -349,5 +389,3 @@ export default function FlashcardGeneratorPage() {
     </div>
   );
 }
-
-    

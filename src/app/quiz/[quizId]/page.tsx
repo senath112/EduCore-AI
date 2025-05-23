@@ -4,7 +4,7 @@
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
-import { getQuizById, submitQuizAttempt, type QuizData, type QuestionData } from '@/services/quiz-service'; // Assuming getQuizById exists
+import { getQuizById, submitQuizAttempt, type QuizData, type QuestionData } from '@/services/quiz-service';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -29,7 +29,7 @@ export default function QuizTakingPage() {
   const params = useParams();
   const quizId = params.quizId as string;
 
-  const { user, userProfile, loading: authLoading, profileLoading } = useAuth();
+  const { user, userProfile, loading: authLoading, profileLoading, triggerStreakUpdate } = useAuth();
   const { toast } = useToast();
 
   const [quizData, setQuizData] = useState<QuizData | null>(null);
@@ -53,7 +53,7 @@ export default function QuizTakingPage() {
             setQuizData(data);
           } else if (data && data.status !== 'published') {
             toast({ variant: "destructive", title: "Quiz Not Available", description: "This quiz is not currently published or available." });
-            setQuizData(null); // Or redirect
+            setQuizData(null); 
           } else {
             toast({ variant: "destructive", title: "Quiz Not Found", description: "Could not load the quiz details." });
           }
@@ -64,9 +64,7 @@ export default function QuizTakingPage() {
         })
         .finally(() => setLoadingQuiz(false));
     } else if (!user && !authLoading) {
-        // Redirect to login or show message if user not logged in
         toast({ title: "Please log in", description: "You need to be logged in to take a quiz."});
-        // Consider redirecting: router.push('/login');
     }
   }, [quizId, user, toast, authLoading]);
 
@@ -82,7 +80,7 @@ export default function QuizTakingPage() {
 
   const handlePreviousQuestion = () => {
     if (currentQuestionIndex > 0) {
-      setCurrentQuestionIndex(prev => prev + 1);
+      setCurrentQuestionIndex(prev => prev - 1);
     }
   };
 
@@ -93,6 +91,7 @@ export default function QuizTakingPage() {
     }
     setIsConfirmSubmitDialogOpen(false);
     setIsSubmitting(true);
+    await triggerStreakUpdate(); // Update activity streak
 
     let correctAnswers = 0;
     const questionArray = Object.values(quizData.questions);
@@ -171,7 +170,7 @@ export default function QuizTakingPage() {
       <Card className="w-full max-w-2xl mx-auto my-auto shadow-xl">
         <CardHeader className="text-center">
           <CardTitle className="text-3xl">Quiz Completed!</CardTitle>
-          <CardDescription>{quizData.title}</CardDescription>
+          <CardDescription>{quizData.title}{quizData.friendlyId ? ` (ID: ${quizData.friendlyId})` : ''}</CardDescription>
         </CardHeader>
         <CardContent className="text-center space-y-4">
           <p className="text-5xl font-bold text-primary">
@@ -223,7 +222,7 @@ export default function QuizTakingPage() {
               Question {currentQuestionIndex + 1} of {totalQuestions}
             </p>
           </div>
-          <CardTitle className="text-2xl">{quizData.title}</CardTitle>
+          <CardTitle className="text-2xl">{quizData.title}{quizData.friendlyId ? ` (ID: ${quizData.friendlyId})` : ''}</CardTitle>
           {quizData.description && <CardDescription>{quizData.description}</CardDescription>}
         </CardHeader>
         <CardContent className="flex-grow space-y-6">
@@ -296,4 +295,3 @@ export default function QuizTakingPage() {
     </>
   );
 }
-

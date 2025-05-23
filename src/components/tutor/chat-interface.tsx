@@ -63,7 +63,7 @@ const formatBoldText = (text: string) => {
 
 export default function ChatInterface() {
   const settings = useSettings();
-  const { user, userProfile, deductCreditForAITutor, profileLoading } = useAuth();
+  const { user, userProfile, deductCreditForAITutor, profileLoading, triggerStreakUpdate } = useAuth();
   const { toast } = useToast();
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -80,20 +80,14 @@ export default function ChatInterface() {
   const [flaggingMessageDetails, setFlaggingMessageDetails] = useState<{ messageId: string, messageContent: string } | null>(null);
   const [feedbackGiven, setFeedbackGiven] = useState<Record<string, 'up' | 'down'>>({});
   
-  const lastContextKeyForGreeting = useRef<string | null>(null);
-
 
   const currentCredits = userProfile?.credits;
   const hasSufficientCredits = userProfile?.isAdmin || userProfile?.isTeacher || (typeof currentCredits === 'number' && currentCredits > 0);
 
+  // Effect for initial greeting message when user, subject, or language changes.
+  // Messages are not persistent in this version.
   useEffect(() => {
-    if (profileLoading) return; // Don't do anything if profile is still loading
-
-    const currentContextKey = `${user?.uid || 'anonymous'}-${settings.subject}-${settings.language}-${settings.learningMode}`;
-
-    if (lastContextKeyForGreeting.current !== currentContextKey) {
-      setMessages([]); // Start with a clean slate for the new context
-      
+    if (user) { // No longer check !profileLoading here for setting messages
       let greetingContent = "";
       const currentSubjectDetails = SUBJECTS.find(s => s.value === settings.subject);
       const personalityName = currentSubjectDetails?.tutorPersonality || `your AI Learning Assistant for ${settings.subject}`;
@@ -107,26 +101,23 @@ export default function ChatInterface() {
           }
       }
 
-      if(user) { // Only send greeting if user is logged in
-        const greetingMessage: Message = {
-          id: `greeting-${Date.now()}-${Math.random()}`,
-          role: 'tutor',
-          content: greetingContent,
-          timestamp: new Date().toISOString(),
-        };
-        setMessages([greetingMessage]);
-      }
-      lastContextKeyForGreeting.current = currentContextKey;
+      const newGreetingMessage: Message = {
+        id: `greeting-${Date.now()}-${Math.random()}`,
+        role: 'tutor',
+        content: greetingContent,
+        timestamp: new Date().toISOString(),
+      };
+      setMessages([newGreetingMessage]);
+    } else {
+      setMessages([]); // Clear messages if user logs out
     }
-
+    
     return () => {
         if (imagePreviewUrl) {
             URL.revokeObjectURL(imagePreviewUrl);
         }
     };
-
-  }, [user, settings.subject, settings.language, settings.learningMode, profileLoading, imagePreviewUrl]);
-
+  }, [user, settings.subject, settings.language]); // Removed profileLoading
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -173,7 +164,7 @@ export default function ChatInterface() {
     });
   };
 
-  const canSubmitMessage = !isAISending && !profileLoading && (currentMessage.trim() !== '' || !!selectedImageFile) && hasSufficientCredits;
+  const canSubmitMessage = !isAISending && !profileLoading && (currentMessage.trim() !== '' || !!selectedImageFile) && hasSufficientCredits && !!user;
 
   const handleSendMessage = async () => {
     if (!user || !userProfile) {
@@ -181,7 +172,7 @@ export default function ChatInterface() {
       else if (!userProfile) toast({ variant: "destructive", title: "Profile Loading", description: "User profile is still loading. Please wait." });
       return;
     }
-     if (!hasSufficientCredits) {
+     if (!hasSufficientCredits && !userProfile.isAdmin && !userProfile.isTeacher) {
         toast({ variant: "destructive", title: "Out of Credits", description: "Please add more credits." });
         return;
     }
@@ -191,6 +182,7 @@ export default function ChatInterface() {
     }
 
     setIsAISending(true);
+    await triggerStreakUpdate();
 
     let imageDataUriForAI: string | undefined = undefined;
     let studentAttachmentForUI: MessageAttachment | undefined = undefined;
@@ -226,9 +218,12 @@ export default function ChatInterface() {
     clearSelectedFile(); 
 
     try {
-      const chatHistoryForAI = messages
+      const chatHistoryForAI = messages // Use current messages state for history
         .filter(msg => !msg.id.startsWith('greeting-')) 
         .map(msg => ({ role: msg.role, content: msg.content }));
+      if (studentMessageContent) {
+          chatHistoryForAI.push({role: 'student', content: studentMessageContent});
+      }
 
       const input: AiTutorInput = {
         subject: settings.subject,
@@ -262,7 +257,8 @@ export default function ChatInterface() {
       };
       setMessages(prevMessages => [...prevMessages, tutorResponse]);
 
-    } catch (error: any) {
+    } catch (error: any)
+{
       console.error("Error with AI Tutor:", error);
       const errorMsg = error.message || "Failed to get response from AI Tutor. Please try again.";
       toast({ variant: "destructive", title: "AI Tutor Error", description: errorMsg });
@@ -297,8 +293,9 @@ export default function ChatInterface() {
     }
     try {
       const userDisplayName = userProfile?.displayName || user.displayName || "Anonymous";
-      const chatHistorySnapshot = messages
-        .filter(m => !m.id.startsWith('greeting-')) 
+      // Snapshot the current UI messages for context
+      const chatHistorySnapshot = messages 
+        .filter(m => !m.id.startsWith('greeting-'))
         .map(m => ({ role: m.role, content: m.content }));
 
       await saveFlaggedResponse(
@@ -354,9 +351,12 @@ export default function ChatInterface() {
   let placeholderText = "Ask a question or request an explanation...";
   if (profileLoading) {
     placeholderText = "Loading profile & credits...";
-  } else if (!hasSufficientCredits && !!user) {
+  } else if (!user) {
+    placeholderText = "Please log in to chat.";
+  } else if (!hasSufficientCredits && !(userProfile?.isAdmin || userProfile?.isTeacher)) {
     placeholderText = "You are out of credits.";
   }
+
 
   return (
     <>
@@ -364,7 +364,7 @@ export default function ChatInterface() {
       <CardContent className="p-0 flex-grow flex flex-col">
         <ScrollArea className="flex-grow w-full p-4" ref={scrollAreaRef}>
         <TooltipProvider>
-          {profileLoading && messages.length === 0 && (
+          {profileLoading && !user && messages.length === 0 && (
             <div className="flex justify-center items-center h-full">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
@@ -471,7 +471,7 @@ export default function ChatInterface() {
                         size="icon"
                         className="h-7 w-7 p-1 opacity-50 hover:opacity-100"
                         onClick={() => openFlagConfirmationDialog(msg.id, msg.content)}
-                        disabled={isAISending}
+                        disabled={isAISending || isInitialGreeting}
                       >
                         <Flag className="h-4 w-4" />
                         <span className="sr-only">Flag this response</span>
@@ -537,14 +537,14 @@ export default function ChatInterface() {
             accept="image/*"
             className="hidden"
             id="file-upload-input"
-            disabled={isAISending || profileLoading || (!hasSufficientCredits && !!user)}
+            disabled={isAISending || profileLoading || (!hasSufficientCredits && !!user && !(userProfile?.isAdmin || userProfile?.isTeacher))}
           />
           <Button
             type="button"
             variant="ghost"
             size="icon"
             onClick={() => fileInputRef.current?.click()}
-            disabled={isAISending || profileLoading || (!hasSufficientCredits && !!user)}
+            disabled={isAISending || profileLoading || (!hasSufficientCredits && !!user && !(userProfile?.isAdmin || userProfile?.isTeacher))}
             aria-label="Attach image"
           >
             <Paperclip className="h-5 w-5" />
@@ -555,7 +555,7 @@ export default function ChatInterface() {
             value={currentMessage}
             onChange={(e) => setCurrentMessage(e.target.value)}
             className="flex-grow"
-            disabled={isAISending || profileLoading || (!hasSufficientCredits && !!user)}
+            disabled={isAISending || profileLoading || (!user || (!hasSufficientCredits && !(userProfile?.isAdmin || userProfile?.isTeacher)))}
           />
           <Button type="submit" disabled={!canSubmitMessage} size="icon" aria-label="Send message">
             {isAISending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}

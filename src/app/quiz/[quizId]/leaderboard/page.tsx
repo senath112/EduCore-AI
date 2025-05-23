@@ -81,7 +81,7 @@ export default function QuizLeaderboardPage() {
         </div>
         <div className="flex items-center gap-2">
             <Trophy className="h-7 w-7 text-amber-500" />
-            <CardTitle className="text-2xl">Leaderboard: {quizDetails.title}</CardTitle>
+            <CardTitle className="text-2xl">Leaderboard: {quizDetails.title}{quizDetails.friendlyId ? ` (ID: ${quizDetails.friendlyId})` : ''}</CardTitle>
         </div>
         <CardDescription>{quizDetails.description}</CardDescription>
       </CardHeader>

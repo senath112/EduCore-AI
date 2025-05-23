@@ -368,7 +368,7 @@ export default function ClassesPage() {
                         <ul className="space-y-2">
                         {publishedQuizzes.map(quiz => (
                             <li key={quiz.id} className="p-2 border rounded-md text-sm bg-muted/30">
-                            <p className="font-medium">{quiz.title}</p>
+                            <p className="font-medium">{quiz.title}{quiz.friendlyId ? ` (ID: ${quiz.friendlyId})`: ""}</p>
                             <p className="text-xs text-muted-foreground truncate max-w-xs">{quiz.description}</p>
                             <Button asChild variant="link" size="sm" className="px-0 h-auto mt-1">
                                 <Link href={`/quiz/${quiz.id}`}>Start Quiz</Link>
@@ -422,4 +422,3 @@ export default function ClassesPage() {
     </>
   );
 }
-
