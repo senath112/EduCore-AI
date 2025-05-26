@@ -16,7 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
 import ReCAPTCHA from 'react-google-recaptcha';
 
@@ -28,6 +28,7 @@ export default function LoginForm() {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isResendingVerification, setIsResendingVerification] = useState(false);
   const [showResendVerificationButtonForEmail, setShowResendVerificationButtonForEmail] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
   const recaptchaRef = useRef<ReCAPTCHA>(null);
 
   const isRecaptchaEnabled = process.env.NEXT_PUBLIC_RECAPTCHA_ENABLED === "true";
@@ -200,9 +201,29 @@ export default function LoginForm() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Password</FormLabel>
-                  <FormControl>
-                    <Input type="password" placeholder="••••••••" {...field} disabled={isLoading || isGoogleLoading || isResendingVerification} />
-                  </FormControl>
+                  <div className="relative">
+                    <FormControl>
+                      <Input
+                        type={showPassword ? "text" : "password"}
+                        placeholder="••••••••"
+                        {...field}
+                        disabled={isSubmitDisabled} 
+                        className="pr-10" // Add padding to the right for the icon button
+                      />
+                    </FormControl>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute top-1/2 right-2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-primary" 
+                      onClick={() => setShowPassword(!showPassword)}
+                      disabled={isSubmitDisabled} 
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      <span className="sr-only">{showPassword ? "Hide password" : "Show password"}</span>
+                    </Button>
+                  </div>
                   <FormMessage />
                 </FormItem>
               )}
@@ -222,6 +243,11 @@ export default function LoginForm() {
             )}
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
+            <div className="w-full text-right -mb-2"> {/* Added -mb-2 to reduce gap slightly if needed, or adjust gap-4 on CardFooter */}
+              <Button variant="link" asChild className="px-0 text-sm h-auto">
+                <Link href="/forgot-password">Forgot password?</Link>
+              </Button>
+            </div>
             <Button type="submit" className="w-full" disabled={isSubmitDisabled}>
               {isLoading ? <Loader2 className="animate-spin" /> : 'Log In'}
             </Button>
