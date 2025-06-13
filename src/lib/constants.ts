@@ -19,7 +19,7 @@ export const SUBJECTS = [
     label: 'Combined Maths',
     iconName: 'Sigma',
     tutorPersonality: 'Professor Pythagoras',
-    imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/89/Pythagoras_in_Thomas_Stanley_History_of_Philosophy.jpg/800px-Pythagoras_in_Thomas_Stanley_History_of_Philosophy.jpg',
+    imageUrl: 'https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSYSLAWBiJmsPd9Mx-bxBamGZJLGbVKV92Yof6lWfV6-E6l0Bw67JUE9_2o1XcZBQsK4A7lOaUij0fgDpQls0QkHA',
   },
   {
     value: 'Physics',
@@ -33,7 +33,7 @@ export const SUBJECTS = [
     label: 'Chemistry',
     iconName: 'FlaskConical',
     tutorPersonality: 'Madame Curie',
-    imageUrl: 'https://encrypted-tbn0.gstatic.com/licensed-image?q=tbn:ANd9GcT6Ew_PgesXXnu5MTM1S0oP6xlIqGas2rrTf7Vu4SyePTfIrPkBlDCm2NjkE3Ymd1QnT3mmpulyQPzADDg',
+    imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Marie_Curie_c._1920s.jpg/500px-Marie_Curie_c._1920s.jpg',
   },
   {
     value: 'ICT',

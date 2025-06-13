@@ -18,6 +18,7 @@ import { Loader2, LogIn, ShieldAlert, CircleDollarSign, MessageSquareText, Send,
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNow } from 'date-fns';
+import ReCAPTCHA from 'react-google-recaptcha'; // Added ReCAPTCHA import
 
 const MINIMUM_CREDITS_FOR_FORUM = 50;
 
@@ -36,6 +37,9 @@ export default function ForumTopicPage() {
   const [isPosting, setIsPosting] = useState(false);
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const recaptchaRef = useRef<ReCAPTCHA>(null);
+  const isRecaptchaEnabled = process.env.NEXT_PUBLIC_RECAPTCHA_ENABLED === "true";
+  const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
 
   const form = useForm<CreateForumPostFormValues>({
     resolver: zodResolver(CreateForumPostSchema),
@@ -88,7 +92,7 @@ export default function ForumTopicPage() {
         setPosts(fetchedPosts);
         setIsLoadingPosts(false);
       });
-      return () => unsubscribe(); // Cleanup listener
+      return () => unsubscribe(); 
     }
   }, [topicId, user, userProfile, isLoading, router, toast]);
 
@@ -107,6 +111,29 @@ export default function ForumTopicPage() {
       return;
     }
     setIsPosting(true);
+
+    if (isRecaptchaEnabled && recaptchaRef.current && recaptchaSiteKey) {
+      try {
+        const token = await recaptchaRef.current.executeAsync();
+        if (!token) {
+          toast({ variant: "destructive", title: "reCAPTCHA Error", description: "Failed to verify reCAPTCHA. Please try again." });
+          setIsPosting(false);
+          recaptchaRef.current.reset();
+          return;
+        }
+        console.warn(
+          "reCAPTCHA v3 token obtained for Forum Post Creation:", token,
+          "IMPORTANT: This token MUST be verified server-side with your secret key for security."
+        );
+      } catch (error) {
+        console.error("reCAPTCHA execution error:", error);
+        toast({ variant: "destructive", title: "reCAPTCHA Error", description: "An error occurred during reCAPTCHA verification." });
+        setIsPosting(false);
+        if (recaptchaRef.current) recaptchaRef.current.reset();
+        return;
+      }
+    }
+
     try {
       await createForumPost(
         topic.id,
@@ -116,12 +143,12 @@ export default function ForumTopicPage() {
       );
       form.reset();
       toast({ title: "Post Created!", description: "Your message has been added to the topic." });
-      // The real-time listener for posts will update the UI automatically.
     } catch (error: any) {
       console.error("Error creating forum post:", error);
       toast({ variant: "destructive", title: "Post Failed", description: error.message || "Could not create your post." });
     } finally {
       setIsPosting(false);
+      if (isRecaptchaEnabled && recaptchaRef.current) recaptchaRef.current.reset();
     }
   };
 
@@ -202,6 +229,13 @@ export default function ForumTopicPage() {
 
   return (
     <div className="my-auto flex flex-col flex-grow h-[calc(100vh-180px)] sm:h-[calc(100vh-200px)]">
+      {isRecaptchaEnabled && recaptchaSiteKey && (
+        <ReCAPTCHA
+          ref={recaptchaRef}
+          sitekey={recaptchaSiteKey}
+          size="invisible"
+        />
+      )}
       <Card className="shadow-xl flex flex-col flex-grow overflow-hidden">
         <CardHeader className="border-b">
           <Button variant="ghost" size="sm" asChild className="mb-2 self-start px-1 text-muted-foreground hover:text-primary">

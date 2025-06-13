@@ -2,8 +2,9 @@
 "use client";
 
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { getQuizById, getQuizAttempts, type QuizData, type QuizAttempt } from '@/services/quiz-service';
+import { getAllUserProfiles, type UserProfileWithId } from '@/services/user-service'; // Import user service
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -19,7 +20,8 @@ export default function QuizLeaderboardPage() {
   const { toast } = useToast();
 
   const [quizDetails, setQuizDetails] = useState<QuizData | null>(null);
-  const [attempts, setAttempts] = useState<QuizAttempt[]>([]);
+  const [allAttempts, setAllAttempts] = useState<QuizAttempt[]>([]);
+  const [allUsers, setAllUsers] = useState<UserProfileWithId[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -27,14 +29,16 @@ export default function QuizLeaderboardPage() {
       setLoading(true);
       Promise.all([
         getQuizById(quizId),
-        getQuizAttempts(quizId)
-      ]).then(([quizData, quizAttempts]) => {
+        getQuizAttempts(quizId),
+        getAllUserProfiles() // Fetch all user profiles
+      ]).then(([quizData, quizAttemptsData, usersData]) => {
         if (quizData) {
           setQuizDetails(quizData);
         } else {
           toast({ variant: "destructive", title: "Quiz Not Found", description: "Could not load quiz details for the leaderboard." });
         }
-        setAttempts(quizAttempts);
+        setAllAttempts(quizAttemptsData);
+        setAllUsers(usersData);
       }).catch(err => {
         console.error("Failed to load leaderboard data:", err);
         toast({ variant: "destructive", title: "Error", description: "Failed to load leaderboard data." });
@@ -43,6 +47,32 @@ export default function QuizLeaderboardPage() {
       });
     }
   }, [quizId, toast]);
+
+  const filteredAndSortedAttempts = useMemo(() => {
+    if (!quizDetails || !quizDetails.classId || allUsers.length === 0) {
+      return [];
+    }
+    const classIdOfQuiz = quizDetails.classId;
+    
+    // Filter attempts by users enrolled in the specific class
+    const relevantAttempts = allAttempts.filter(attempt => {
+      const userProfile = allUsers.find(user => user.id === attempt.userId);
+      return userProfile && userProfile.enrolledClassIds && userProfile.enrolledClassIds[classIdOfQuiz];
+    });
+
+    // Sort attempts: highest score (percentage) first, then newest attempt first for ties
+    return relevantAttempts.sort((a, b) => {
+      const scorePercentA = a.score.total > 0 ? a.score.correct / a.score.total : 0;
+      const scorePercentB = b.score.total > 0 ? b.score.correct / b.score.total : 0;
+
+      if (scorePercentB !== scorePercentA) {
+        return scorePercentB - scorePercentA; // Higher score percentage first
+      }
+      // If scores are tied, sort by newest attempt first
+      return new Date(b.attemptedAt).getTime() - new Date(a.attemptedAt).getTime();
+    });
+  }, [allAttempts, quizDetails, allUsers]);
+
 
   if (loading) {
     return (
@@ -84,10 +114,11 @@ export default function QuizLeaderboardPage() {
             <CardTitle className="text-2xl">Leaderboard: {quizDetails.title}{quizDetails.friendlyId ? ` (ID: ${quizDetails.friendlyId})` : ''}</CardTitle>
         </div>
         <CardDescription>{quizDetails.description}</CardDescription>
+         <p className="text-sm text-muted-foreground pt-1">Showing attempts from students enrolled in class: {quizDetails.className}</p>
       </CardHeader>
       <CardContent className="flex-grow space-y-6">
-        {attempts.length === 0 ? (
-          <p className="text-muted-foreground text-center py-10">No attempts recorded for this quiz yet. Be the first!</p>
+        {filteredAndSortedAttempts.length === 0 ? (
+          <p className="text-muted-foreground text-center py-10">No attempts recorded for this quiz from students in this class yet.</p>
         ) : (
           <div className="overflow-x-auto">
             <Table>
@@ -101,7 +132,7 @@ export default function QuizLeaderboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {attempts.map((attempt, index) => {
+                {filteredAndSortedAttempts.map((attempt, index) => {
                   const percentage = attempt.score.total > 0 ? ((attempt.score.correct / attempt.score.total) * 100).toFixed(1) : "0.0";
                   return (
                     <TableRow key={`${attempt.userId}-${attempt.attemptedAt}-${index}`}>

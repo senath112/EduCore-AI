@@ -12,6 +12,7 @@ import { getAllClasses, type ClassData } from '@/services/class-service';
 import EditUserDialog from '@/components/admin/edit-user-dialog';
 import ViewFlaggedResponseDialog from '@/components/admin/view-flagged-response-dialog';
 import CloseSupportTicketDialog from '@/components/admin/close-support-ticket-dialog';
+import AwardBadgeDialog from '@/components/admin/award-badge-dialog'; // Import the new dialog
 import {
   Table,
   TableBody,
@@ -65,6 +66,9 @@ export default function AdminDashboardPage() {
 
   const [selectedTicketForClosure, setSelectedTicketForClosure] = useState<SupportTicketLog | null>(null);
   const [isCloseTicketDialogOpen, setIsCloseTicketDialogOpen] = useState(false);
+
+  const [selectedUserForBadgeAward, setSelectedUserForBadgeAward] = useState<UserProfileWithId | null>(null);
+  const [isAwardBadgeDialogOpen, setIsAwardBadgeDialogOpen] = useState(false);
 
   const isLoading = authLoading || profileLoading;
 
@@ -245,6 +249,16 @@ export default function AdminDashboardPage() {
     setIsCloseTicketDialogOpen(false);
   };
   
+  const handleOpenAwardBadgeDialog = (user: UserProfileWithId) => {
+    setSelectedUserForBadgeAward(user);
+    setIsAwardBadgeDialogOpen(true);
+  };
+
+  const handleBadgeAwardedSuccess = () => {
+    fetchAdminData();
+    setIsAwardBadgeDialogOpen(false);
+  };
+
   const anyDataStillLoading = useMemo(() => {
     return loadingFlags || loadingUsers || loadingSupportTickets || loadingCreditVouchers || loadingTeacherStats || loadingAllClasses;
   }, [loadingFlags, loadingUsers, loadingSupportTickets, loadingCreditVouchers, loadingTeacherStats, loadingAllClasses]);
@@ -633,6 +647,16 @@ export default function AdminDashboardPage() {
                         <UserCog className="h-4 w-4 mr-1" />
                         Edit
                       </Button>
+                       <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleOpenAwardBadgeDialog(u)}
+                        disabled={isSendingResetEmailFor === u.id || togglingAccountStatusFor === u.id}
+                        title="Award Badge to User"
+                      >
+                        <Award className="h-4 w-4 mr-1 text-amber-500" />
+                        Badge
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -974,6 +998,14 @@ export default function AdminDashboardPage() {
           onOpenChange={setIsEditUserDialogOpen}
           userToEdit={selectedUserForEdit}
           onUserUpdated={handleUserUpdateSuccess}
+        />
+      )}
+      {selectedUserForBadgeAward && (
+        <AwardBadgeDialog
+          isOpen={isAwardBadgeDialogOpen}
+          onOpenChange={setIsAwardBadgeDialogOpen}
+          userToAward={selectedUserForBadgeAward}
+          onBadgeAwarded={handleBadgeAwardedSuccess}
         />
       )}
       {selectedFlagForView && (

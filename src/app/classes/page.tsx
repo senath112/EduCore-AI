@@ -1,13 +1,13 @@
 
 "use client";
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react'; // Added useRef
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { getAllClasses, getClassByFriendlyId, type ClassData } from '@/services/class-service';
 import { enrollInClass, leaveClass } from '@/services/user-service';
 import { redeemVoucher } from '@/services/voucher-service';
-import { getQuizzesForClass, type QuizData } from '@/services/quiz-service'; // Import quiz service
+import { getQuizzesForClass, type QuizData } from '@/services/quiz-service'; 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -21,6 +21,7 @@ import { z } from 'zod';
 import type { RedeemVoucherFormValues, JoinClassFormValues } from '@/lib/schemas';
 import { RedeemVoucherSchema, JoinClassSchema } from '@/lib/schemas';
 import { Separator } from '@/components/ui/separator';
+import ReCAPTCHA from 'react-google-recaptcha'; // Added ReCAPTCHA import
 
 
 export default function ClassesPage() {
@@ -39,6 +40,11 @@ export default function ClassesPage() {
 
   const isLoading = authLoading || profileLoading;
 
+  const redeemVoucherRecaptchaRef = useRef<ReCAPTCHA>(null);
+  const joinClassRecaptchaRef = useRef<ReCAPTCHA>(null);
+  const isRecaptchaEnabled = process.env.NEXT_PUBLIC_RECAPTCHA_ENABLED === "true";
+  const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
+
   const redeemVoucherForm = useForm<RedeemVoucherFormValues>({
     resolver: zodResolver(RedeemVoucherSchema),
     defaultValues: {
@@ -56,7 +62,7 @@ export default function ClassesPage() {
   const fetchClassesAndQuizzes = useCallback(async () => {
     if (user && userProfile) {
       setLoadingAllClasses(true);
-      setLoadingClassQuizzes({}); // Reset quiz loading states
+      setLoadingClassQuizzes({}); 
       try {
         const classes = await getAllClasses();
         setAllClasses(classes);
@@ -94,7 +100,7 @@ export default function ClassesPage() {
   useEffect(() => {
     if (!isLoading && !user) {
       router.push('/login');
-    } else if (user && userProfile) { // Ensure userProfile is also loaded
+    } else if (user && userProfile) { 
         fetchClassesAndQuizzes();
     }
   }, [user, userProfile, isLoading, router, fetchClassesAndQuizzes]);
@@ -106,7 +112,7 @@ export default function ClassesPage() {
     try {
       await leaveClass(user.uid, classId);
       await refreshUserProfile();
-      fetchClassesAndQuizzes(); // Re-fetch to update enrolled classes and their quizzes
+      fetchClassesAndQuizzes(); 
       toast({
         title: "Success",
         description: "Successfully left the class.",
@@ -126,6 +132,29 @@ export default function ClassesPage() {
   const handleRedeemVoucher = async (values: RedeemVoucherFormValues) => {
     if (!user || !userProfile) return;
     setIsRedeemingVoucher(true);
+
+    if (isRecaptchaEnabled && redeemVoucherRecaptchaRef.current && recaptchaSiteKey) {
+      try {
+        const token = await redeemVoucherRecaptchaRef.current.executeAsync();
+        if (!token) {
+          toast({ variant: "destructive", title: "reCAPTCHA Error", description: "Failed to verify reCAPTCHA. Please try again." });
+          setIsRedeemingVoucher(false);
+          redeemVoucherRecaptchaRef.current.reset();
+          return;
+        }
+        console.warn(
+          "reCAPTCHA v3 token obtained for Voucher Redemption:", token,
+          "IMPORTANT: This token MUST be verified server-side with your secret key for security."
+        );
+      } catch (error) {
+        console.error("reCAPTCHA execution error:", error);
+        toast({ variant: "destructive", title: "reCAPTCHA Error", description: "An error occurred during reCAPTCHA verification." });
+        setIsRedeemingVoucher(false);
+        if (redeemVoucherRecaptchaRef.current) redeemVoucherRecaptchaRef.current.reset();
+        return;
+      }
+    }
+
     try {
       const result = await redeemVoucher(user.uid, values.voucherCode);
       if (result.success) {
@@ -134,7 +163,7 @@ export default function ClassesPage() {
           description: result.message,
         });
         await refreshUserProfile();
-        if (result.autoEnrolledClassId) { // If auto-enrolled, refresh class/quiz data
+        if (result.autoEnrolledClassId) { 
             fetchClassesAndQuizzes();
         }
         redeemVoucherForm.reset();
@@ -154,12 +183,36 @@ export default function ClassesPage() {
       });
     } finally {
       setIsRedeemingVoucher(false);
+      if (isRecaptchaEnabled && redeemVoucherRecaptchaRef.current) redeemVoucherRecaptchaRef.current.reset();
     }
   };
 
   const handleJoinClassSubmit = async (values: JoinClassFormValues) => {
     if (!user || !userProfile) return;
     setIsJoiningClass(true);
+
+    if (isRecaptchaEnabled && joinClassRecaptchaRef.current && recaptchaSiteKey) {
+      try {
+        const token = await joinClassRecaptchaRef.current.executeAsync();
+        if (!token) {
+          toast({ variant: "destructive", title: "reCAPTCHA Error", description: "Failed to verify reCAPTCHA. Please try again." });
+          setIsJoiningClass(false);
+          joinClassRecaptchaRef.current.reset();
+          return;
+        }
+        console.warn(
+          "reCAPTCHA v3 token obtained for Class Join:", token,
+          "IMPORTANT: This token MUST be verified server-side with your secret key for security."
+        );
+      } catch (error) {
+        console.error("reCAPTCHA execution error:", error);
+        toast({ variant: "destructive", title: "reCAPTCHA Error", description: "An error occurred during reCAPTCHA verification." });
+        setIsJoiningClass(false);
+        if (joinClassRecaptchaRef.current) joinClassRecaptchaRef.current.reset();
+        return;
+      }
+    }
+
     try {
       const classToJoin = await getClassByFriendlyId(values.friendlyId);
       if (!classToJoin) {
@@ -169,6 +222,7 @@ export default function ClassesPage() {
           description: `No class found with ID: ${values.friendlyId}. Please check the ID and try again.`,
         });
         setIsJoiningClass(false);
+        if (isRecaptchaEnabled && joinClassRecaptchaRef.current) joinClassRecaptchaRef.current.reset();
         return;
       }
 
@@ -179,6 +233,7 @@ export default function ClassesPage() {
           description: `You are already enrolled in "${classToJoin.name}".`,
         });
         setIsJoiningClass(false);
+        if (isRecaptchaEnabled && joinClassRecaptchaRef.current) joinClassRecaptchaRef.current.reset();
         return;
       }
 
@@ -188,7 +243,7 @@ export default function ClassesPage() {
         description: `You have been enrolled in "${classToJoin.name}".`,
       });
       await refreshUserProfile();
-      fetchClassesAndQuizzes(); // Re-fetch to update enrolled classes and their quizzes
+      fetchClassesAndQuizzes(); 
       joinClassForm.reset();
 
     } catch (error: any) {
@@ -200,11 +255,12 @@ export default function ClassesPage() {
       });
     } finally {
       setIsJoiningClass(false);
+      if (isRecaptchaEnabled && joinClassRecaptchaRef.current) joinClassRecaptchaRef.current.reset();
     }
   };
 
 
-  if (isLoading || (loadingAllClasses && !allClasses.length)) { // Adjusted loading condition
+  if (isLoading || (loadingAllClasses && !allClasses.length)) { 
     return (
       <div className="flex flex-col flex-grow items-center justify-center p-6 min-h-[calc(100vh-150px)]">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -254,6 +310,13 @@ export default function ClassesPage() {
             <CardDescription>Enter the Friendly Class ID provided by your teacher.</CardDescription>
           </CardHeader>
           <CardContent>
+            {isRecaptchaEnabled && recaptchaSiteKey && (
+              <ReCAPTCHA
+                ref={joinClassRecaptchaRef}
+                sitekey={recaptchaSiteKey}
+                size="invisible"
+              />
+            )}
             <Form {...joinClassForm}>
               <form onSubmit={joinClassForm.handleSubmit(handleJoinClassSubmit)} className="space-y-4">
                 <FormField
@@ -295,6 +358,13 @@ export default function ClassesPage() {
             <CardDescription>Enter a voucher code to add credits to your account.</CardDescription>
           </CardHeader>
           <CardContent>
+             {isRecaptchaEnabled && recaptchaSiteKey && (
+              <ReCAPTCHA
+                ref={redeemVoucherRecaptchaRef}
+                sitekey={recaptchaSiteKey}
+                size="invisible"
+              />
+            )}
             <Form {...redeemVoucherForm}>
               <form onSubmit={redeemVoucherForm.handleSubmit(handleRedeemVoucher)} className="space-y-4">
                 <FormField

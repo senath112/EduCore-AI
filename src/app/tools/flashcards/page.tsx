@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react'; // Added useRef
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -18,6 +18,7 @@ import Link from 'next/link';
 import { cn } from "@/lib/utils";
 import jsPDF from 'jspdf';
 import { format } from 'date-fns';
+import ReCAPTCHA from 'react-google-recaptcha'; // Added ReCAPTCHA import
 
 const GenerateFlashcardsFormSchema = z.object({
   topic: z.string().min(3, "Topic must be at least 3 characters.").max(100, "Topic cannot exceed 100 characters."),
@@ -52,10 +53,13 @@ export default function FlashcardGeneratorPage() {
   const [generatedFlashcards, setGeneratedFlashcards] = useState<DisplayFlashcard[]>([]);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [isCardFlipped, setIsCardFlipped] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false); // Renamed from isLoading for clarity
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [currentTopic, setCurrentTopic] = useState('');
 
+  const recaptchaRef = useRef<ReCAPTCHA>(null);
+  const isRecaptchaEnabled = process.env.NEXT_PUBLIC_RECAPTCHA_ENABLED === "true";
+  const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
 
   const form = useForm<GenerateFlashcardsFormValues>({
     resolver: zodResolver(GenerateFlashcardsFormSchema),
@@ -77,7 +81,7 @@ export default function FlashcardGeneratorPage() {
   }, [numberOfFlashcardsToGenerate]);
 
   const hasSufficientCredits = useMemo(() => {
-    if (!userProfile || userProfile.isAdmin || userProfile.isTeacher) return true; // Admins/Teachers bypass
+    if (!userProfile || userProfile.isAdmin || userProfile.isTeacher) return true; 
     return (userProfile.credits ?? 0) >= calculatedCost;
   }, [userProfile, calculatedCost]);
 
@@ -90,29 +94,55 @@ export default function FlashcardGeneratorPage() {
         toast({ title: "Profile loading", description: "Please wait a moment and try again." });
         return;
     }
+    
+    setIsGenerating(true);
+
+    if (isRecaptchaEnabled && recaptchaRef.current && recaptchaSiteKey) {
+      try {
+        const token = await recaptchaRef.current.executeAsync();
+        if (!token) {
+          toast({ variant: "destructive", title: "reCAPTCHA Error", description: "Failed to verify reCAPTCHA. Please try again." });
+          setIsGenerating(false);
+          recaptchaRef.current.reset();
+          return;
+        }
+        console.warn(
+          "reCAPTCHA v3 token obtained for Flashcard Generation:", token,
+          "IMPORTANT: This token MUST be verified server-side with your secret key for security."
+        );
+      } catch (error) {
+        console.error("reCAPTCHA execution error:", error);
+        toast({ variant: "destructive", title: "reCAPTCHA Error", description: "An error occurred during reCAPTCHA verification." });
+        setIsGenerating(false);
+        if (recaptchaRef.current) recaptchaRef.current.reset();
+        return;
+      }
+    }
 
     const cost = values.numberOfFlashcards * FLASHCARD_CREDIT_COST_PER_CARD;
 
     if (!userProfile.isAdmin && !userProfile.isTeacher) {
       if ((userProfile.credits ?? 0) < cost) {
         toast({ variant: "destructive", title: "Insufficient Credits", description: `You need ${cost} credits to generate ${values.numberOfFlashcards} flashcards. You have ${userProfile.credits ?? 0}.` });
+        setIsGenerating(false);
+        if (isRecaptchaEnabled && recaptchaRef.current) recaptchaRef.current.reset();
         return;
       }
       
       const deductionSuccess = await deductCreditForFlashcards(cost);
       if (!deductionSuccess) {
         toast({ variant: "destructive", title: "Credit Deduction Failed", description: "Could not deduct credits. Please try again or check your balance." });
-        setIsLoading(false);
+        setIsGenerating(false);
+        if (isRecaptchaEnabled && recaptchaRef.current) recaptchaRef.current.reset();
         return;
       }
     }
     
-    setIsLoading(true);
     setGeneratedFlashcards([]);
     setCurrentCardIndex(0);
     setIsCardFlipped(false);
     setCurrentTopic(values.topic);
-    await triggerStreakUpdate(); // Update activity streak
+    await triggerStreakUpdate(); 
 
     try {
       const result = await generateFlashcards({
@@ -136,7 +166,8 @@ export default function FlashcardGeneratorPage() {
       console.error("Error generating flashcards:", error);
       toast({ variant: "destructive", title: "Generation Failed", description: error.message || "Could not generate flashcards." });
     } finally {
-      setIsLoading(false);
+      setIsGenerating(false);
+      if (isRecaptchaEnabled && recaptchaRef.current) recaptchaRef.current.reset();
     }
   };
 
@@ -266,10 +297,17 @@ export default function FlashcardGeneratorPage() {
   }
   
   const currentCard = generatedFlashcards[currentCardIndex];
-  const isGenerateButtonDisabled = isLoading || profileLoading || (!hasSufficientCredits && !userProfile?.isAdmin && !userProfile?.isTeacher);
+  const isSubmitButtonDisabled = isGenerating || profileLoading || (!hasSufficientCredits && !userProfile?.isAdmin && !userProfile?.isTeacher);
 
   return (
     <div className="w-full max-w-2xl mx-auto flex flex-col flex-grow">
+      {isRecaptchaEnabled && recaptchaSiteKey && (
+        <ReCAPTCHA
+          ref={recaptchaRef}
+          sitekey={recaptchaSiteKey}
+          size="invisible"
+        />
+      )}
       <Card className="shadow-xl mb-6">
         <CardHeader>
           <CardTitle className="text-2xl flex items-center gap-2">
@@ -291,7 +329,7 @@ export default function FlashcardGeneratorPage() {
                   <FormItem>
                     <FormLabel>Topic</FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g., Photosynthesis, Newton's Laws" {...field} disabled={isLoading || profileLoading} />
+                      <Input placeholder="e.g., Photosynthesis, Newton's Laws" {...field} disabled={isGenerating || profileLoading} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -304,7 +342,7 @@ export default function FlashcardGeneratorPage() {
                   <FormItem>
                     <FormLabel>Number of Flashcards (1-10)</FormLabel>
                     <FormControl>
-                      <Input type="number" min="1" max="10" {...field} disabled={isLoading || profileLoading} />
+                      <Input type="number" min="1" max="10" {...field} disabled={isGenerating || profileLoading} />
                     </FormControl>
                     <FormDescription className="flex items-center gap-1 text-xs pt-1">
                       <CircleDollarSign className="h-3.5 w-3.5" />
@@ -318,15 +356,15 @@ export default function FlashcardGeneratorPage() {
               />
             </CardContent>
             <CardFooter className="flex-col sm:flex-row gap-2">
-              <Button type="submit" className="w-full sm:w-auto" disabled={isGenerateButtonDisabled}>
-                {isLoading ? <Loader2 className="animate-spin" /> : "Generate Flashcards"}
+              <Button type="submit" className="w-full sm:w-auto" disabled={isSubmitButtonDisabled}>
+                {isGenerating ? <Loader2 className="animate-spin" /> : "Generate Flashcards"}
               </Button>
               <Button 
                 type="button" 
                 variant="outline" 
                 className="w-full sm:w-auto"
                 onClick={handleDownloadFlashcardsPDF} 
-                disabled={isLoading || isDownloadingPdf || generatedFlashcards.length === 0}
+                disabled={isGenerating || isDownloadingPdf || generatedFlashcards.length === 0}
               >
                 {isDownloadingPdf ? <Loader2 className="animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                 Download PDF
@@ -336,14 +374,14 @@ export default function FlashcardGeneratorPage() {
         </Form>
       </Card>
 
-      {(isLoading || profileLoading && !user) && (
+      {(isGenerating || profileLoading && !user) && (
         <div className="flex justify-center items-center py-10">
           <Loader2 className="h-10 w-10 animate-spin text-primary" />
           <p className="ml-3 text-muted-foreground">{profileLoading && !user ? "Loading user data..." : "Generating flashcards..."}</p>
         </div>
       )}
 
-      {generatedFlashcards.length > 0 && !isLoading && (
+      {generatedFlashcards.length > 0 && !isGenerating && (
         <div className="flex flex-col items-center space-y-4 flex-grow">
           <Card 
             className={cn(
@@ -383,7 +421,7 @@ export default function FlashcardGeneratorPage() {
           </div>
         </div>
       )}
-       {!isLoading && generatedFlashcards.length === 0 && form.formState.isSubmitted && (
+       {!isGenerating && generatedFlashcards.length === 0 && form.formState.isSubmitted && (
          <p className="text-center text-muted-foreground py-10">No flashcards generated. Try a different topic or check the AI's response if there was an issue.</p>
        )}
     </div>

@@ -5,10 +5,19 @@ import type { Database } from 'firebase/database';
 import { getDatabase } from 'firebase/database';
 import { app } from '@/lib/firebase';
 import type { User } from 'firebase/auth';
-import { format, parseISO, isSameDay, isYesterday, subDays } from 'date-fns';
+import { format, parseISO, isSameDay, isYesterday, subDays, formatISO } from 'date-fns';
+import { ALL_BADGES, type BadgeDefinition } from '@/lib/badge-constants'; // Import ALL_BADGES
 
 const DEFAULT_INITIAL_CREDITS = 10;
 const database: Database = getDatabase(app);
+
+export interface EarnedBadge {
+  badgeId: string;
+  name: string;
+  description: string;
+  iconName: string;
+  earnedAt: string; // ISO timestamp
+}
 
 export interface UserProfile {
   email: string | null;
@@ -26,6 +35,7 @@ export interface UserProfile {
   enrolledClassIds?: Record<string, boolean>;
   currentStreak?: number;
   lastActivityDate?: string; // YYYY-MM-DD
+  earnedBadges?: Record<string, EarnedBadge>;
 }
 
 export interface UserProfileWithId extends UserProfile {
@@ -73,6 +83,15 @@ export interface SupportTicketLog {
   lastUpdatedAt?: string; // ISO string of last update
 }
 
+export interface MarkEntry {
+  id: string; // Firebase push key
+  subjectName: string;
+  markObtained: number;
+  totalMarks: number;
+  percentage: number;
+  dateEntered: string; // ISO timestamp
+}
+
 
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
   if (!userId) return null;
@@ -107,8 +126,8 @@ export async function getAllUserProfiles(): Promise<UserProfileWithId[]> {
   }
 }
 
-export async function saveUserData(user: User, additionalData: Partial<UserProfile> = {}) {
-  if (!user) return;
+export async function saveUserData(user: User, additionalData: Partial<UserProfile> = {}): Promise<UserProfile> {
+  if (!user) throw new Error("User object is required to save user data.");
 
   const userProfileRef = ref(database, `users/${user.uid}/profile`);
   let existingProfile: UserProfile | null = null;
@@ -120,17 +139,45 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
     }
   } catch (error) {
     console.error("Error fetching existing user profile during saveUserData:", error);
+    // Continue, as we can still create a new profile
   }
 
   const now = new Date().toISOString();
   let finalCredits: number;
+  const earnedBadges: Record<string, EarnedBadge> = additionalData.earnedBadges ?? existingProfile?.earnedBadges ?? {};
 
-  if (typeof additionalData.credits === 'number') {
-    finalCredits = additionalData.credits;
-  } else if (existingProfile && typeof existingProfile.credits === 'number') {
-    finalCredits = existingProfile.credits;
+  if (existingProfile) {
+    // User exists, preserve credits unless explicitly overridden by additionalData
+    finalCredits = additionalData.credits ?? existingProfile.credits ?? DEFAULT_INITIAL_CREDITS;
   } else {
-    finalCredits = DEFAULT_INITIAL_CREDITS;
+    // New user
+    finalCredits = additionalData.credits ?? DEFAULT_INITIAL_CREDITS;
+    console.log(`Assigning initial credits (${finalCredits}) to new user: ${user.uid}`);
+
+    // Award "Early Adopter" badge to the first 103 users
+    try {
+      // Fetch all users to get the count *before* this new user is fully saved
+      const allUsersSnapshot = await get(ref(database, 'users'));
+      const userCount = allUsersSnapshot.exists() ? Object.keys(allUsersSnapshot.val()).length : 0;
+                                        
+      console.log(`Current user count (for Early Adopter check): ${userCount}`);
+      if (userCount < 103) { 
+        const earlyAdopterBadgeDef = ALL_BADGES.find(b => b.id === 'early_adopter_103');
+        if (earlyAdopterBadgeDef) {
+          earnedBadges[earlyAdopterBadgeDef.id] = {
+            badgeId: earlyAdopterBadgeDef.id,
+            name: earlyAdopterBadgeDef.name,
+            description: earlyAdopterBadgeDef.description,
+            iconName: earlyAdopterBadgeDef.iconName,
+            earnedAt: now,
+          };
+          console.log(`Awarded "Early Adopter" badge to user ${user.uid}. User count at time of awarding (approx): ${userCount}`);
+        }
+      }
+    } catch (badgeError) {
+      console.error("Error during early adopter badge awarding:", badgeError);
+      // Continue saving user data even if badge awarding fails
+    }
   }
 
   const profileData: UserProfile = {
@@ -149,15 +196,17 @@ export async function saveUserData(user: User, additionalData: Partial<UserProfi
     enrolledClassIds: additionalData.enrolledClassIds ?? existingProfile?.enrolledClassIds ?? {},
     currentStreak: additionalData.currentStreak ?? existingProfile?.currentStreak ?? 0,
     lastActivityDate: additionalData.lastActivityDate ?? existingProfile?.lastActivityDate ?? '',
+    earnedBadges: earnedBadges,
   };
 
   const cleanedProfileData = Object.fromEntries(
-    Object.entries(profileData).filter(([, value]) => value !== undefined)
+    Object.entries(profileData).filter(([, value]) => value !== undefined && value !== null) // Also filter out nulls
   ) as Partial<UserProfile>;
+
 
   try {
     await set(userProfileRef, cleanedProfileData);
-    console.log('User data saved successfully for UID:', user.uid);
+    console.log('User data saved successfully for UID:', user.uid, 'Credits:', cleanedProfileData.credits);
     return cleanedProfileData as UserProfile;
   } catch (error) {
     console.error('Error saving user data:', error);
@@ -192,13 +241,13 @@ export async function adminUpdateUserProfile(
     isTeacher: typeof updates.isTeacher === 'boolean' ? updates.isTeacher : existingProfile.isTeacher,
     isAccountDisabled: typeof updates.isAccountDisabled === 'boolean' ? updates.isAccountDisabled : existingProfile.isAccountDisabled,
     lastUpdatedAt: now,
-    // Retain these from existing
-    email: existingProfile.email,
+    email: existingProfile.email, // Ensure email and other non-editable fields are preserved
     photoURL: existingProfile.photoURL,
     createdAt: existingProfile.createdAt,
     enrolledClassIds: existingProfile.enrolledClassIds,
     currentStreak: existingProfile.currentStreak,
     lastActivityDate: existingProfile.lastActivityDate,
+    earnedBadges: existingProfile.earnedBadges,
   };
 
   const cleanedUpdates = Object.fromEntries(
@@ -260,22 +309,30 @@ export async function saveFlaggedResponse(
   language: string,
   chatHistorySnapshot: Array<{ role: string; content: string }>,
 ): Promise<void> {
-  console.log('Attempting to save flagged response. Details:', { userId, userDisplayName, flaggedMessageId, subject, language, hasChatHistory: chatHistorySnapshot && chatHistorySnapshot.length > 0 });
-  if (!userId || !flaggedMessageId || !flaggedMessageContent) {
-    const missingFields = [];
-    if (!userId) missingFields.push('User ID');
-    if (!flaggedMessageId) missingFields.push('Message ID');
-    if (!flaggedMessageContent) missingFields.push('Message Content');
-    const errorMessage = `Cannot save flag: Missing critical information (${missingFields.join(', ')}).`;
-    console.warn(errorMessage, { userId, flaggedMessageId, flaggedMessageContent });
-    throw new Error(errorMessage);
+  console.log('Attempting to save flagged response. UserID:', userId, 'MessageID:', flaggedMessageId, 'Content snippet:', flaggedMessageContent.substring(0, 50));
+  
+  if (!userId) {
+    const errorMsg = "Cannot save flag: User ID is missing.";
+    console.warn(errorMsg);
+    throw new Error(errorMsg);
+  }
+  if (!flaggedMessageId) {
+    const errorMsg = "Cannot save flag: Flagged Message ID is missing.";
+    console.warn(errorMsg);
+    throw new Error(errorMsg);
+  }
+  if (!flaggedMessageContent) {
+    const errorMsg = "Cannot save flag: Flagged Message Content is missing.";
+    console.warn(errorMsg);
+    throw new Error(errorMsg);
   }
 
   const flaggedResponsesRef = ref(database, 'flaggedResponses');
   const newFlagRef = push(flaggedResponsesRef);
   if (!newFlagRef.key) {
-    console.error('Firebase Realtime Database failed to generate a push key for the new flagged response.');
-    throw new Error("Failed to generate a unique ID for the flagged response in the database.");
+    const dbErrorMsg = 'Firebase Realtime Database failed to generate a push key for the new flagged response.';
+    console.error(dbErrorMsg);
+    throw new Error(dbErrorMsg);
   }
 
   const flaggedResponseLog: FlaggedResponseLog = {
@@ -292,8 +349,9 @@ export async function saveFlaggedResponse(
     await set(newFlagRef, flaggedResponseLog);
     console.log(`Flagged response ${newFlagRef.key} saved successfully for user: ${userId}`);
   } catch (error) {
-    console.error(`Error saving flagged response (ID: ${newFlagRef.key}) for user: ${userId} to Firebase. Error:`, error);
-    throw error; // Re-throw the error to be caught by the UI
+    const firebaseError = error as Error;
+    console.error(`Error saving flagged response (ID: ${newFlagRef.key}) for user: ${userId} to Firebase. Error:`, firebaseError.message, firebaseError.stack);
+    throw firebaseError; 
   }
 }
 
@@ -424,10 +482,10 @@ export async function sendSupportClosureEmailToUser(
     ---
     In a real application, an actual email would be sent here via a backend service.
   `);
+  // Simulate network delay
   await new Promise(resolve => setTimeout(resolve, 500));
 }
 
-// Enroll in class
 export async function enrollInClass(userId: string, classId: string): Promise<void> {
   if (!userId || !classId) {
     throw new Error("User ID and Class ID are required to enroll.");
@@ -443,7 +501,6 @@ export async function enrollInClass(userId: string, classId: string): Promise<vo
   }
 }
 
-// Leave class
 export async function leaveClass(userId: string, classId: string): Promise<void> {
   if (!userId || !classId) {
     throw new Error("User ID and Class ID are required to leave class.");
@@ -471,35 +528,148 @@ export async function updateUserActivityAndStreak(userId: string): Promise<void>
     }
     const profile = snapshot.val() as UserProfile;
 
-    const todayStr = format(new Date(), 'yyyy-MM-dd');
-    let newStreak = profile.currentStreak || 0;
-    let newLastActivityDate = profile.lastActivityDate || '';
+    const todayStr = format(new Date(), 'yyyy-MM-dd'); 
+    let newStreak = profile.currentStreak || 0; 
+    let lastActivityDateFromProfile = profile.lastActivityDate || ''; 
 
-    if (!newLastActivityDate) { // First activity ever
+    if (!lastActivityDateFromProfile) {
       newStreak = 1;
     } else {
-      const lastActivity = parseISO(newLastActivityDate);
-      if (!isSameDay(new Date(), lastActivity)) { // Activity on a new day
+      const lastActivity = parseISO(lastActivityDateFromProfile); 
+
+      if (!isSameDay(new Date(), lastActivity)) {
         if (isYesterday(lastActivity)) {
-          newStreak += 1;
-        } else { // Streak broken
-          newStreak = 1;
+          newStreak = (profile.currentStreak || 0) + 1;
+        } else {
+          newStreak = 1; 
         }
       }
-      // If it's the same day, streak doesn't change
     }
-    newLastActivityDate = todayStr;
 
-    if (newStreak !== profile.currentStreak || newLastActivityDate !== profile.lastActivityDate) {
+    if (newStreak !== (profile.currentStreak || 0) || todayStr !== profile.lastActivityDate) {
       await update(userProfileRef, {
         currentStreak: newStreak,
-        lastActivityDate: newLastActivityDate,
+        lastActivityDate: todayStr, 
         lastUpdatedAt: new Date().toISOString(),
       });
-      console.log(`User ${userId} streak updated to ${newStreak}, last activity ${newLastActivityDate}`);
+      console.log(`User ${userId} streak updated to ${newStreak}, last activity ${todayStr}`);
+
+      if (newStreak === 3) await awardBadge(userId, 'streak_3_days');
+      if (newStreak === 100) await awardBadge(userId, 'streak_100_days');
+      if (newStreak === 200) await awardBadge(userId, 'streak_200_days');
+      if (newStreak === 365) await awardBadge(userId, 'streak_365_days');
     }
   } catch (error) {
     console.error(`Error updating streak for user ${userId}:`, error);
-    // Optionally re-throw or handle more gracefully
   }
+}
+
+export async function awardBadge(userId: string, badgeId: string): Promise<boolean> {
+  if (!userId || !badgeId) {
+    console.warn("User ID and Badge ID are required to award a badge.");
+    return false;
+  }
+
+  const userProfileRef = ref(database, `users/${userId}/profile`);
+  try {
+    const snapshot = await get(userProfileRef);
+    if (!snapshot.exists()) {
+      console.warn(`User profile not found for user ${userId}. Cannot award badge.`);
+      return false;
+    }
+
+    const profile = snapshot.val() as UserProfile;
+    const earnedBadges = profile.earnedBadges || {};
+
+    if (earnedBadges[badgeId]) {
+      console.log(`User ${userId} already has badge ${badgeId}.`);
+      return false; // Badge already earned
+    }
+
+    const badgeDefinition = ALL_BADGES.find(b => b.id === badgeId);
+    if (!badgeDefinition) {
+      console.warn(`Badge definition not found for badgeId: ${badgeId}.`);
+      return false;
+    }
+
+    const newBadge: EarnedBadge = {
+      badgeId: badgeDefinition.id,
+      name: badgeDefinition.name,
+      description: badgeDefinition.description,
+      iconName: badgeDefinition.iconName,
+      earnedAt: new Date().toISOString(),
+    };
+
+    earnedBadges[badgeId] = newBadge;
+
+    await update(userProfileRef, {
+      earnedBadges: earnedBadges,
+      lastUpdatedAt: new Date().toISOString(),
+    });
+
+    console.log(`Badge "${badgeDefinition.name}" awarded to user ${userId}.`);
+    return true; // Badge was newly awarded
+  } catch (error) {
+    console.error(`Error awarding badge ${badgeId} to user ${userId}:`, error);
+    return false;
+  }
+}
+
+// --- Marks Tracker Functions ---
+
+export async function addMarkEntry(
+  userId: string,
+  data: { subjectName: string; markObtained: number; totalMarks: number }
+): Promise<string> {
+  if (!userId) throw new Error("User ID is required to add a mark entry.");
+
+  const percentage = (data.markObtained / data.totalMarks) * 100;
+  const dateEntered = formatISO(new Date());
+
+  const marksRef = ref(database, `userMarks/${userId}/entries`);
+  const newMarkRef = push(marksRef);
+  if (!newMarkRef.key) {
+    throw new Error("Failed to generate a unique key for the new mark entry.");
+  }
+
+  const newEntry: MarkEntry = {
+    id: newMarkRef.key,
+    ...data,
+    percentage,
+    dateEntered,
+  };
+
+  await set(newMarkRef, newEntry);
+  return newMarkRef.key;
+}
+
+export async function getUserMarkEntries(userId: string): Promise<MarkEntry[]> {
+  if (!userId) return [];
+  const marksRef = ref(database, `userMarks/${userId}/entries`);
+  const dbQuery = query(marksRef, orderByChild('dateEntered'));
+
+  try {
+    const snapshot = await get(dbQuery);
+    const entries: MarkEntry[] = [];
+    if (snapshot.exists()) {
+      const data = snapshot.val();
+      Object.keys(data).forEach(key => {
+        entries.push({ id: key, ...data[key] });
+      });
+      // Sort descending by date (newest first)
+      entries.sort((a, b) => new Date(b.dateEntered).getTime() - new Date(a.dateEntered).getTime());
+    }
+    return entries;
+  } catch (error) {
+    console.error("Error fetching mark entries:", error);
+    throw error;
+  }
+}
+
+export async function deleteUserMarkEntry(userId: string, markEntryId: string): Promise<void> {
+  if (!userId || !markEntryId) {
+    throw new Error("User ID and Mark Entry ID are required to delete an entry.");
+  }
+  const markEntryRef = ref(database, `userMarks/${userId}/entries/${markEntryId}`);
+  await remove(markEntryRef);
 }

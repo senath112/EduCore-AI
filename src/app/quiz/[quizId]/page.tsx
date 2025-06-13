@@ -2,9 +2,10 @@
 "use client";
 
 import { useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react'; // Added useRef
 import { useAuth } from '@/hooks/use-auth';
-import { getQuizById, submitQuizAttempt, type QuizData, type QuestionData } from '@/services/quiz-service';
+import { getQuizById, submitQuizAttempt, getQuizAttempts, type QuizData, type QuestionData } from '@/services/quiz-service';
+import { awardBadge } from '@/services/user-service'; // Import awardBadge
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -22,6 +23,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import ReCAPTCHA from 'react-google-recaptcha'; // Added ReCAPTCHA import
 
 type AnswersState = Record<string, string>; // questionId: selectedOptionId
 
@@ -29,7 +31,7 @@ export default function QuizTakingPage() {
   const params = useParams();
   const quizId = params.quizId as string;
 
-  const { user, userProfile, loading: authLoading, profileLoading, triggerStreakUpdate } = useAuth();
+  const { user, userProfile, loading: authLoading, profileLoading, triggerStreakUpdate, refreshUserProfile } = useAuth();
   const { toast } = useToast();
 
   const [quizData, setQuizData] = useState<QuizData | null>(null);
@@ -43,6 +45,10 @@ export default function QuizTakingPage() {
   const [isConfirmSubmitDialogOpen, setIsConfirmSubmitDialogOpen] = useState(false);
 
   const isLoading = authLoading || profileLoading;
+
+  const recaptchaRef = useRef<ReCAPTCHA>(null);
+  const isRecaptchaEnabled = process.env.NEXT_PUBLIC_RECAPTCHA_ENABLED === "true";
+  const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
 
   useEffect(() => {
     if (quizId && user) {
@@ -80,7 +86,7 @@ export default function QuizTakingPage() {
 
   const handlePreviousQuestion = () => {
     if (currentQuestionIndex > 0) {
-      setCurrentQuestionIndex(prev => prev - 1);
+      setCurrentQuestionIndex(prev => prev - 1); // Corrected from prev + 1
     }
   };
 
@@ -91,7 +97,30 @@ export default function QuizTakingPage() {
     }
     setIsConfirmSubmitDialogOpen(false);
     setIsSubmitting(true);
-    await triggerStreakUpdate(); // Update activity streak
+
+    if (isRecaptchaEnabled && recaptchaRef.current && recaptchaSiteKey) {
+      try {
+        const token = await recaptchaRef.current.executeAsync();
+        if (!token) {
+          toast({ variant: "destructive", title: "reCAPTCHA Error", description: "Failed to verify reCAPTCHA. Please try again." });
+          setIsSubmitting(false);
+          recaptchaRef.current.reset();
+          return;
+        }
+        console.warn(
+          "reCAPTCHA v3 token obtained for Quiz Submission:", token,
+          "IMPORTANT: This token MUST be verified server-side with your secret key for security."
+        );
+      } catch (error) {
+        console.error("reCAPTCHA execution error:", error);
+        toast({ variant: "destructive", title: "reCAPTCHA Error", description: "An error occurred during reCAPTCHA verification." });
+        setIsSubmitting(false);
+        if (recaptchaRef.current) recaptchaRef.current.reset();
+        return;
+      }
+    }
+
+    await triggerStreakUpdate(); 
 
     let correctAnswers = 0;
     const questionArray = Object.values(quizData.questions);
@@ -114,11 +143,45 @@ export default function QuizTakingPage() {
         );
         toast({ title: "Quiz Submitted!", description: `You scored ${correctAnswers} out of ${questionArray.length}.`});
         setQuizSubmitted(true);
+
+        // Check for leaderboard topper badge
+        const allAttempts = await getQuizAttempts(quizId);
+        if (allAttempts.length > 0 && allAttempts[0].userId === user.uid) {
+            // Ensure user is #1 (getQuizAttempts already sorts this way, but a double check is fine)
+            const userIsTop = allAttempts[0].score.correct === currentScore.correct && allAttempts[0].score.total === currentScore.total;
+            if (userIsTop) {
+                const badgeAwarded = await awardBadge(user.uid, 'leaderboard_topper');
+                if (badgeAwarded) {
+                    toast({ 
+                        title: "New Badge Earned!", 
+                        description: "Congratulations! You've earned the 'Leaderboard Topper' badge!",
+                        duration: 7000 
+                    });
+                    await refreshUserProfile(); 
+                }
+            }
+        }
+        
+        // Check for Quiz Ace badge (score > 80%)
+        if (currentScore.total > 0 && (currentScore.correct / currentScore.total) * 100 > 80) {
+            const badgeAwarded = await awardBadge(user.uid, 'quiz_ace');
+            if (badgeAwarded) {
+                toast({
+                    title: "New Badge Earned!",
+                    description: "Congratulations! You've earned the 'Quiz Ace' badge!",
+                    duration: 7000
+                });
+                await refreshUserProfile();
+            }
+        }
+
+
     } catch (error) {
-        console.error("Error submitting quiz attempt:", error);
-        toast({ variant: "destructive", title: "Submission Failed", description: "Could not save your quiz attempt."});
+        console.error("Error submitting quiz attempt or awarding badge:", error);
+        toast({ variant: "destructive", title: "Submission Failed", description: "Could not save your quiz attempt or check for badges."});
     } finally {
         setIsSubmitting(false);
+        if (isRecaptchaEnabled && recaptchaRef.current) recaptchaRef.current.reset();
     }
   };
 
@@ -211,6 +274,13 @@ export default function QuizTakingPage() {
 
   return (
     <>
+      {isRecaptchaEnabled && recaptchaSiteKey && (
+        <ReCAPTCHA
+          ref={recaptchaRef}
+          sitekey={recaptchaSiteKey}
+          size="invisible"
+        />
+      )}
       <Card className="w-full max-w-2xl mx-auto my-auto shadow-xl flex flex-col flex-grow">
         <CardHeader>
           <div className="flex justify-between items-center">

@@ -4,4 +4,7 @@ config();
 
 import '@/ai/flows/ai-tutor.ts';
 import '@/ai/flows/generate-quiz-questions-flow.ts';
-import '@/ai/flows/generate-flashcards-flow.ts'; // Add new flow
+import '@/ai/flows/generate-flashcards-flow.ts';
+import '@/ai/flows/generate-fill-blanks-puzzle-flow.ts';
+import '@/ai/flows/validate-completed-puzzle-flow.ts'; // Add new validation flow
+

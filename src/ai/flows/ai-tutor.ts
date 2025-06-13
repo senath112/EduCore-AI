@@ -10,7 +10,7 @@
  */
 
 import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import {z} from 'zod';
 import type { Language, Subject, SubjectDetails } from '@/lib/constants';
 import { LANGUAGES, SUBJECTS } from '@/lib/constants';
 
@@ -35,10 +35,11 @@ const AiTutorOutputSchema = z.object({
   chartType: z.enum(["bar", "line", "pie"]).optional().describe("The type of chart to be drawn, if a chart was requested and data is provided."),
   chartData: z.array(
     z.object({
-      name: z.string().describe("The label for the data point (e.g., category name on X-axis or pie slice)."),
-      value: z.number().describe("The numerical value for this data point (e.g., height of the bar, point on a line, or pie slice value).")
+      name: z.string().describe("The label for the data point (e.g., category name on X-axis, x-value for a formula plot, or pie slice)."),
+      value: z.number().describe("The numerical value for this data point (e.g., height of the bar, y-value for a formula plot, point on a line, or pie slice value).")
     })
-  ).optional().describe("The data points for the chart, if a chart is requested. Each object should have a 'name' (string label) and a 'value' (number). If the student asks for a chart, provide this data. Example: [{'name': 'Category A', 'value': 10}, {'name': 'Category B', 'value': 20}]")
+  ).optional().describe("The data points for the chart, if a chart is requested. Each object should have a 'name' (string label/x-value) and a 'value' (number/y-value). If the student asks for a chart, provide this data. Example: [{'name': 'Category A', 'value': 10}, {'name': 'Category B', 'value': 20}] or for a formula plot like y=x^2: [{'name': '-2', 'value': 4}, {'name': '-1', 'value': 1}, {'name': '0', 'value': 0}, {'name': '1', 'value': 1}, {'name': '2', 'value': 4}]"),
+  // geogebraExpression removed
 });
 export type AiTutorOutput = z.infer<typeof AiTutorOutputSchema>;
 
@@ -87,12 +88,23 @@ If you are Ada Lovelace for ICT, you might say "Let's analyze the logic and algo
 {{/ifEquals}}
 
 CHARTING INSTRUCTIONS:
-If the student asks you to "draw a chart", "plot data", "visualize data as a chart", or similar, you should:
-1. Identify the type of chart requested (bar, line, pie). If not specified, choose a reasonable default like 'bar' for categorical data or 'line' for time series.
-2. Extract the data points (labels and values) from the student's request or the chat history.
-3. If you can successfully extract this information, provide it in the 'chartType' and 'chartData' output fields. 'chartData' should be an array of objects, where each object has a "name" (string) and a "value" (number). For example: [{"name": "Apples", "value": 5}, {"name": "Oranges", "value": 10}].
-4. Your 'tutorResponse' text should introduce the chart or explain any assumptions made. Example: "Okay, I can help you visualize that. Here's the data for a bar chart:"
-5. If you cannot determine the chart type or extract clear data, or if the request is too complex, state this in your 'tutorResponse' and do NOT provide 'chartType' or 'chartData'. Example: "I can help with charts, but I need a bit more clarity on the data you want to plot. Could you provide the data points like 'Category A: 10, Category B: 20'?"
+1. General Charting: If the student asks you to "draw a chart", "plot data", "visualize data as a chart", or similar for categorical or simple series data:
+    a. Identify the type of chart requested (bar, line, pie). If not specified, choose a reasonable default like 'bar' for categorical data or 'line' for time series.
+    b. Extract the data points (labels and values) from the student's request or the chat history.
+    c. If you can successfully extract this information, provide it in the 'chartType' and 'chartData' output fields. 'chartData' should be an array of objects, where each object has a "name" (string label) and a "value" (number). Example: [{"name": "Apples", "value": 5}, {"name": "Oranges", "value": 10}].
+    d. Your 'tutorResponse' text should introduce the chart or explain any assumptions made. Example: "Okay, I can help you visualize that. Here's the data for a bar chart:"
+    e. If you cannot determine the chart type or extract clear data, or if the request is too complex, state this in your 'tutorResponse' and do NOT provide 'chartType' or 'chartData'. Example: "I can help with charts, but I need a bit more clarity on the data you want to plot. Could you provide the data points like 'Category A: 10, Category B: 20'?"
+
+2. Plotting Mathematical Formulae: If the student asks to "plot a formula", "graph y = ...", "plot the function ...", or similar:
+    a. Identify the mathematical formula (e.g., y = x^2 - 2x + 1).
+    b. Determine the independent variable (usually 'x') and its range. If the student provides a range (e.g., "from x = -5 to 5"), use that. If not, use a default range, for example, from x = -10 to x = 10, or a range appropriate for the function if it's known (e.g., trigonometric functions often shown from -2*pi to 2*pi). State the range you are using in your \`tutorResponse\`.
+    c. Choose a reasonable number of discrete data points to calculate across this range (e.g., 11 to 21 points to provide a smooth enough curve).
+    d. For each chosen x-value, calculate the corresponding y-value using the formula.
+    e. Set the \`chartType\` output field to "line".
+    f. Format the \`chartData\` output as an array of objects: \`[{"name": "x_value_1_as_string", "value": y_value_1_as_number}, {"name": "x_value_2_as_string", "value": y_value_2_as_number}, ...]\`. Ensure the data points are ordered by increasing x-value.
+        Example for y = x^2 from x = -2 to 2 with 5 points: \`[{"name": "-2", "value": 4}, {"name": "-1", "value": 1}, {"name": "0", "value": 0}, {"name": "1", "value": 1}, {"name": "2", "value": 4}]\`.
+    g. Your \`tutorResponse\` text should introduce the plot, stating the formula and the range used. For example: "Certainly! Here's a plot of the function y = x^2 - 2x + 1 for x ranging from -3 to 3, showing the calculated data points."
+    h. If you cannot understand the formula, if it's too complex for you to evaluate and generate points for, or if the request is unclear, state this politely in your \`tutorResponse\` and do NOT provide \`chartType\` or \`chartData\`. Example: "I can plot common mathematical functions, but I'm having trouble understanding or evaluating the specific formula you've provided. Could you please clarify it or try a simpler function?"
 
 MATHEMATICAL NOTATION AND CALCULATIONS:
 1. When presenting mathematical expressions, equations, or calculations, strive for maximum clarity using **standard text-based notation ONLY**.
@@ -116,10 +128,10 @@ Do not be preachy or judgmental when declining a question, regardless of mode.
 Chat History:
 {{#each chatHistory}}
 {{#ifEquals role 'student'}}
-Student: {{{content}}}
+Student: {{content}}
 {{/ifEquals}}
 {{#ifEquals role 'tutor'}}
-Tutor: {{{content}}}
+Tutor: {{content}}
 {{/ifEquals}}
 {{/each}}
 
@@ -156,7 +168,7 @@ const aiTutorFlow = ai.defineFlow(
     const response = await prompt({
       ...input,
       learningMode: effectiveLearningMode,
-      tutorPersonality: tutorPersonality, // Pass to prompt, Handlebars will use if defined
+      tutorPersonality: tutorPersonality, 
     });
 
     if (!response.output || !response.output.tutorResponse) {
@@ -175,10 +187,10 @@ const aiTutorFlow = ai.defineFlow(
       }
       console.error(failureReason, 'Full AI response:', response);
       
-      // Generic fallback message if AI fails to generate a structured response
       const fallbackResponse = `I'm sorry, I encountered an issue and cannot respond to that specific request at this moment. Perhaps we could try a different question on ${input.subject}?`;
       return { tutorResponse: fallbackResponse };
     }
     return response.output;
   }
 );
+

@@ -119,3 +119,33 @@ export const CreateForumTopicSchema = z.object({
     .max(500, { message: "Topic description cannot exceed 500 characters." }),
 });
 export type CreateForumTopicFormValues = z.infer<typeof CreateForumTopicSchema>;
+
+export const GenerateBlockPuzzleFormSchema = z.object({
+  topic: z.string().min(3, "Topic must be at least 3 characters.").max(100, "Topic cannot exceed 100 characters."),
+  numberOfBlanks: z.coerce.number().min(1, "Must have at least 1 blank.").max(4, "Cannot have more than 4 blanks."),
+  numberOfDistractorsPerBlank: z.coerce.number().min(1, "Must have at least 1 distractor per blank.").max(3, "Cannot have more than 3 distractors per blank."),
+});
+export type GenerateBlockPuzzleFormValues = z.infer<typeof GenerateBlockPuzzleFormSchema>;
+
+export const AddMarkEntrySchema = z.object({
+  subjectName: z.string().min(1, { message: "Subject name is required." }).max(100, { message: "Subject name cannot exceed 100 characters." }),
+  markObtained: z.coerce.number().min(0, { message: "Mark obtained cannot be negative." }),
+  totalMarks: z.coerce.number().min(1, { message: "Total marks must be at least 1." }),
+}).refine(data => data.markObtained <= data.totalMarks, {
+  message: "Mark obtained cannot be greater than total marks.",
+  path: ["markObtained"],
+});
+export type AddMarkEntryFormValues = z.infer<typeof AddMarkEntrySchema>;
+
+export const AddPlannerEntrySchema = z.object({
+  task: z.string().min(3, "Task description must be at least 3 characters.").max(200, "Task description cannot exceed 200 characters."),
+  subject: z.string().min(1, "Please select a subject."),
+  date: z.date({ required_error: "Please select a date." }),
+  time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Please enter a valid time (HH:MM)."),
+  durationMinutes: z.coerce.number().min(5, "Duration must be at least 5 minutes.").max(720, "Duration cannot exceed 12 hours (720 minutes).").optional().or(z.literal('')),
+  notes: z.string().max(500, "Notes cannot exceed 500 characters.").optional(),
+}).transform(values => ({
+  ...values,
+  durationMinutes: values.durationMinutes === '' ? undefined : values.durationMinutes,
+}));
+export type AddPlannerEntryFormValues = z.infer<typeof AddPlannerEntrySchema>;
