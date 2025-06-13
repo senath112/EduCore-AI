@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react'; // Added useRef
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Loader2, Send, Info } from 'lucide-react';
+import ReCAPTCHA from 'react-google-recaptcha'; // Added ReCAPTCHA import
 
 interface RequestSupportDialogProps {
   isOpen: boolean;
@@ -41,6 +42,10 @@ export default function RequestSupportDialog({ isOpen, onOpenChange }: RequestSu
   const [supportId, setSupportId] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
+  const recaptchaRef = useRef<ReCAPTCHA>(null);
+  const isRecaptchaEnabled = process.env.NEXT_PUBLIC_RECAPTCHA_ENABLED === "true";
+  const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
+
   const form = useForm<SupportRequestFormValues>({
     resolver: zodResolver(SupportRequestFormSchema),
     defaultValues: {
@@ -51,7 +56,7 @@ export default function RequestSupportDialog({ isOpen, onOpenChange }: RequestSu
   useEffect(() => {
     if (isOpen) {
       setSupportId(generateSupportId());
-      form.reset(); // Reset form when dialog opens
+      form.reset(); 
     }
   }, [isOpen, form]);
 
@@ -61,8 +66,31 @@ export default function RequestSupportDialog({ isOpen, onOpenChange }: RequestSu
       return;
     }
     setIsProcessing(true);
+
+    if (isRecaptchaEnabled && recaptchaRef.current && recaptchaSiteKey) {
+      try {
+        const token = await recaptchaRef.current.executeAsync();
+        if (!token) {
+          toast({ variant: "destructive", title: "reCAPTCHA Error", description: "Failed to verify reCAPTCHA. Please try again." });
+          setIsProcessing(false);
+          recaptchaRef.current.reset();
+          return;
+        }
+        console.warn(
+          "reCAPTCHA v3 token obtained for Support Ticket Creation:", token,
+          "IMPORTANT: This token MUST be verified server-side with your secret key for security."
+        );
+      } catch (error) {
+        console.error("reCAPTCHA execution error:", error);
+        toast({ variant: "destructive", title: "reCAPTCHA Error", description: "An error occurred during reCAPTCHA verification." });
+        setIsProcessing(false);
+        if (recaptchaRef.current) recaptchaRef.current.reset();
+        return;
+      }
+    }
+
     try {
-      const ticketData: SupportTicketLog = {
+      const ticketData: Omit<SupportTicketLog, 'status' | 'lastUpdatedAt'> = { // Adjusted type
         supportId,
         userId: user.uid,
         userDisplayName: userProfile.displayName || user.displayName || user.email,
@@ -88,12 +116,20 @@ export default function RequestSupportDialog({ isOpen, onOpenChange }: RequestSu
       });
     } finally {
       setIsProcessing(false);
+      if (isRecaptchaEnabled && recaptchaRef.current) recaptchaRef.current.reset();
     }
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
+        {isRecaptchaEnabled && recaptchaSiteKey && (
+          <ReCAPTCHA
+            ref={recaptchaRef}
+            sitekey={recaptchaSiteKey}
+            size="invisible"
+          />
+        )}
         <DialogHeader>
           <DialogTitle>Request Support</DialogTitle>
           <DialogDescription>

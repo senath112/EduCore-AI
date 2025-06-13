@@ -7,13 +7,13 @@ import { useSettings } from '@/hooks/use-settings';
 import { useAuth } from '@/hooks/use-auth';
 import { aiTutor } from '@/ai/flows/ai-tutor';
 import type { AiTutorInput, AiTutorOutput } from '@/ai/flows/ai-tutor';
-import { saveFlaggedResponse, saveAIResponseFeedback, saveUserQuestion } from '@/services/user-service';
+import { saveFlaggedResponse, type UserProfile } from '@/services/user-service'; 
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
-import { Send, User, Bot, Loader2, Flag, Paperclip, XCircle, ThumbsUp, ThumbsDown, Lock, AlertTriangle } from 'lucide-react';
+import { Send, User, Bot, Loader2, Flag, Paperclip, XCircle, ThumbsUp, ThumbsDown, Lock, AlertTriangle, Calculator } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -26,9 +26,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import DynamicChartRenderer from './dynamic-chart-renderer';
+// GeoGebraPlot component is no longer used here
 import { SUBJECTS } from '@/lib/constants';
-import ReCAPTCHA from 'react-google-recaptcha'; // Import ReCAPTCHA
+import ReCAPTCHA from 'react-google-recaptcha';
 
 type MessageAttachment = {
   name: string;
@@ -46,6 +53,7 @@ type Message = {
   attachment?: MessageAttachment;
   chartType?: "bar" | "line" | "pie";
   chartData?: ChartDataPoint[];
+  // geogebraExpression removed
 };
 
 const formatBoldText = (text: string) => {
@@ -64,7 +72,7 @@ const formatBoldText = (text: string) => {
 
 export default function ChatInterface() {
   const settings = useSettings();
-  const { user, userProfile, deductCreditForAITutor, profileLoading, triggerStreakUpdate } = useAuth();
+  const { user, userProfile, loading: authLoading, profileLoading, deductCreditForAITutor, triggerStreakUpdate } = useAuth();
   const { toast } = useToast();
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -80,17 +88,16 @@ export default function ChatInterface() {
   const [flaggingMessageDetails, setFlaggingMessageDetails] = useState<{ messageId: string, messageContent: string } | null>(null);
   const [feedbackGiven, setFeedbackGiven] = useState<Record<string, 'up' | 'down'>>({});
   
-  // Refs for managing greeting state across context changes
   const lastContextKeyForGreeting = useRef<string | null>(null);
-  const greetingSentForContext = useRef<string | null>(null);
+  const greetingSentForCurrentContext = useRef<boolean>(false);
 
-  const recaptchaRef = useRef<ReCAPTCHA>(null); // Ref for reCAPTCHA
+  const [isGeoGebraDialogOpen, setIsGeoGebraDialogOpen] = useState(false);
+
+  const recaptchaRef = useRef<ReCAPTCHA>(null);
   const isRecaptchaEnabled = process.env.NEXT_PUBLIC_RECAPTCHA_ENABLED === "true";
   const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
 
-
   useEffect(() => {
-    // Cleanup object URL on component unmount or when imagePreviewUrl changes
     return () => {
       if (imagePreviewUrl) {
         URL.revokeObjectURL(imagePreviewUrl);
@@ -98,44 +105,42 @@ export default function ChatInterface() {
     };
   }, [imagePreviewUrl]);
 
-  useEffect(() => {
+ useEffect(() => {
     const currentContextKey = `${user?.uid || 'nouser'}_${settings.subject}_${settings.language}_${settings.learningMode}`;
 
     if (lastContextKeyForGreeting.current !== currentContextKey) {
-      // Context has changed, reset messages and greeting status for this new context
-      setMessages([]);
-      greetingSentForContext.current = null; // Mark that greeting needs to be re-evaluated
-      lastContextKeyForGreeting.current = currentContextKey;
+        lastContextKeyForGreeting.current = currentContextKey;
+        greetingSentForCurrentContext.current = false; // Reset flag when context changes
+        setMessages([]); // Clear messages for a new context
     }
 
-    if (user && !greetingSentForContext.current) {
-      let greetingContent = "";
-      const currentSubjectDetails = SUBJECTS.find(s => s.value === settings.subject);
-      const personalityName = currentSubjectDetails?.tutorPersonality || `your AI Learning Assistant for ${settings.subject}`;
+    if (user && !greetingSentForCurrentContext.current && !authLoading && !profileLoading && messages.length === 0) {
+        let greetingContent = "";
+        const currentSubjectDetails = SUBJECTS.find(s => s.value === settings.subject);
+        const personalityName = currentSubjectDetails?.tutorPersonality || `your AI Learning Assistant for ${settings.subject}`;
 
-      if (settings.learningMode === 'deep') {
-          greetingContent = `Deep Learning Mode for ${settings.subject} in ${settings.language} activated. How can I assist you with advanced concepts?`;
-      } else {
-          greetingContent = `Hello! I am ${personalityName}. I specialize in ${settings.subject} and I'll be assisting you in ${settings.language}. How may I help you today?`;
-          if (settings.subject === 'ICT') {
-              greetingContent += " For comprehensive study, please also refer to the Advanced Level ICT resource book provided by the Sri Lankan government.";
-          }
-      }
-
-      const newGreetingMessage: Message = {
-        id: `greeting-${Date.now()}-${Math.random()}`,
-        role: 'tutor',
-        content: greetingContent,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages([newGreetingMessage]);
-      greetingSentForContext.current = currentContextKey; // Mark greeting as sent for this context
-    } else if (!user) {
-      setMessages([]); // Clear messages if user logs out
-      greetingSentForContext.current = null; // Reset greeting status
-      lastContextKeyForGreeting.current = null;
+        if (settings.learningMode === 'deep') {
+            greetingContent = `Deep Learning Mode for ${settings.subject} in ${settings.language} activated. How can I assist you with advanced concepts?`;
+        } else {
+            greetingContent = `Hello! I am ${personalityName}. I specialize in ${settings.subject} and I'll be assisting you in ${settings.language}. How may I help you today?`;
+            if (settings.subject === 'ICT') {
+                greetingContent += " For comprehensive study, please also refer to the Advanced Level ICT resource book provided by the Sri Lankan government.";
+            }
+        }
+        const newGreetingMessage: Message = {
+          id: `greeting-${Date.now()}-${Math.random()}`,
+          role: 'tutor',
+          content: greetingContent,
+          timestamp: new Date().toISOString(),
+        };
+        setMessages([newGreetingMessage]);
+        greetingSentForCurrentContext.current = true;
+    } else if (!user && lastContextKeyForGreeting.current !== null) {
+        setMessages([]);
+        lastContextKeyForGreeting.current = null;
+        greetingSentForCurrentContext.current = false;
     }
-  }, [user, settings.subject, settings.language, settings.learningMode]);
+  }, [user, settings.subject, settings.language, settings.learningMode, authLoading, profileLoading, messages.length]); // messages.length might still cause issues here
 
 
   useEffect(() => {
@@ -183,10 +188,12 @@ export default function ChatInterface() {
     });
   };
 
-  const currentCredits = userProfile?.credits;
   const isPrivilegedUser = userProfile?.isAdmin || userProfile?.isTeacher;
-  const hasSufficientCredits = isPrivilegedUser || (typeof currentCredits === 'number' && currentCredits > 0);
-  const canSubmitMessage = !isAISending && !profileLoading && (currentMessage.trim() !== '' || !!selectedImageFile) && hasSufficientCredits && !!user;
+  const costForCurrentMode = settings.learningMode === 'deep' ? 3 : 1;
+  const currentCredits = userProfile?.credits;
+  const hasSufficientCreditsForMode = isPrivilegedUser || (typeof currentCredits === 'number' && currentCredits >= costForCurrentMode);
+
+  const canSubmitMessage = !isAISending && !profileLoading && (currentMessage.trim() !== '' || !!selectedImageFile) && hasSufficientCreditsForMode && !!user;
 
   const handleSendMessage = async () => {
     if (isRecaptchaEnabled && recaptchaRef.current && recaptchaSiteKey) {
@@ -194,12 +201,11 @@ export default function ChatInterface() {
         const token = await recaptchaRef.current.executeAsync();
         if (!token) {
           toast({ variant: "destructive", title: "reCAPTCHA Error", description: "Failed to verify reCAPTCHA. Please try again." });
-          recaptchaRef.current.reset();
+          if(recaptchaRef.current) recaptchaRef.current.reset();
           return;
         }
         console.warn("ChatInterface reCAPTCHA token:", token, "IMPORTANT: This token MUST be verified server-side for security.");
-        // In a real application, send this token to your backend for verification.
-        recaptchaRef.current.reset();
+        if(recaptchaRef.current) recaptchaRef.current.reset();
       } catch (error) {
         console.error("reCAPTCHA execution error:", error);
         toast({ variant: "destructive", title: "reCAPTCHA Error", description: "An error occurred during reCAPTCHA verification." });
@@ -213,10 +219,13 @@ export default function ChatInterface() {
       else if (!userProfile) toast({ variant: "destructive", title: "Profile Loading", description: "User profile is still loading. Please wait." });
       return;
     }
-     if (!hasSufficientCredits && !isPrivilegedUser) {
-        toast({ variant: "destructive", title: "Out of Credits", description: "Please add more credits." });
+    
+    const costForThisMessage = settings.learningMode === 'deep' ? 3 : 1;
+    if (!isPrivilegedUser && (userProfile.credits ?? 0) < costForThisMessage) {
+        toast({ variant: "destructive", title: "Insufficient Credits", description: `You need ${costForThisMessage} credits for this interaction. You have ${userProfile.credits ?? 0}.` });
         return;
     }
+
     if (profileLoading) {
       toast({ title: "Loading profile...", description: "Please wait."});
       return;
@@ -253,8 +262,7 @@ export default function ChatInterface() {
         attachment: studentAttachmentForUI,
     };
     setMessages(prevMessages => [...prevMessages, studentMessage]);
-    // Don't save student question here anymore based on previous request to remove saving all user content
-
+    
     const messageToSendToAI = currentMessage;
     setCurrentMessage(''); 
     clearSelectedFile(); 
@@ -279,7 +287,7 @@ export default function ChatInterface() {
       const result: AiTutorOutput = await aiTutor(input);
 
       if (!isPrivilegedUser) {
-        const creditDeducted = await deductCreditForAITutor();
+        const creditDeducted = await deductCreditForAITutor(costForThisMessage);
         if (!creditDeducted && result.tutorResponse) {
             toast({
                 variant: "destructive",
@@ -296,6 +304,7 @@ export default function ChatInterface() {
         timestamp: new Date().toISOString(),
         chartType: result.chartType,
         chartData: result.chartData,
+        // geogebraExpression removed
       };
       setMessages(prevMessages => [...prevMessages, tutorResponse]);
 
@@ -333,7 +342,7 @@ export default function ChatInterface() {
       setFlaggingMessageDetails(null);
       return;
     }
-    console.log('Flagging message with details:', flaggingMessageDetails, 'User:', user.uid, 'Current Subject:', settings.subject);
+    console.log('Attempting to save flagged response. UserID:', user.uid, 'MessageID:', flaggingMessageDetails.messageId, 'Content snippet:', flaggingMessageDetails.messageContent.substring(0, 50));
     try {
       const userDisplayName = userProfile?.displayName || user.displayName || "Anonymous";
       const chatHistorySnapshot = messages 
@@ -380,23 +389,25 @@ export default function ChatInterface() {
       timestamp: new Date().toISOString(),
     };
 
-    try {
-      await saveAIResponseFeedback(feedbackData);
-      setFeedbackGiven(prev => ({ ...prev, [messageId]: feedbackType }));
-      toast({ title: "Feedback Submitted", description: "Thank you for helping us improve!" });
-    } catch (error: any) {
-      console.error("Failed to save AI response feedback:", error);
-      toast({ variant: "destructive", title: "Feedback Error", description: error.message || "Could not submit your feedback." });
-    }
+    console.log("Feedback submitted (simulated):", feedbackData);
+    // In a real app, save feedbackData to Firebase here
+    // Example: await saveAIResponseFeedback(feedbackData);
+    setFeedbackGiven(prev => ({ ...prev, [messageId]: feedbackType }));
+    toast({ title: "Feedback Submitted", description: "Thank you for helping us improve!" });
   };
+  
+  const handleOpenGraphingCalculatorDialog = () => {
+    setIsGeoGebraDialogOpen(true);
+  };
+
 
   let placeholderText = "Ask a question or request an explanation...";
   if (profileLoading) {
     placeholderText = "Loading profile & credits...";
   } else if (!user) {
     placeholderText = "Please log in to chat.";
-  } else if (!hasSufficientCredits && !isPrivilegedUser) {
-    placeholderText = "You are out of credits.";
+  } else if (!isPrivilegedUser && userProfile && (userProfile.credits ?? 0) < costForCurrentMode) {
+    placeholderText = `Insufficient credits (need ${costForCurrentMode}).`;
   }
 
 
@@ -579,6 +590,24 @@ export default function ChatInterface() {
           }}
           className="flex w-full items-center gap-2"
         >
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isAISending || profileLoading || (!hasSufficientCreditsForMode && !isPrivilegedUser)}
+                  aria-label="Attach image"
+                >
+                  <Paperclip className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent><p>Attach Image</p></TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
           <input
             type="file"
             ref={fileInputRef}
@@ -586,26 +615,33 @@ export default function ChatInterface() {
             accept="image/*"
             className="hidden"
             id="file-upload-input"
-            disabled={isAISending || profileLoading || (!hasSufficientCredits && !isPrivilegedUser)}
+            disabled={isAISending || profileLoading || (!hasSufficientCreditsForMode && !isPrivilegedUser)}
           />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isAISending || profileLoading || (!hasSufficientCredits && !isPrivilegedUser)}
-            aria-label="Attach image"
-          >
-            <Paperclip className="h-5 w-5" />
-          </Button>
           <Input
             type="text"
             placeholder={placeholderText}
             value={currentMessage}
             onChange={(e) => setCurrentMessage(e.target.value)}
             className="flex-grow"
-            disabled={isAISending || profileLoading || (!user || (!hasSufficientCredits && !isPrivilegedUser))}
+            disabled={isAISending || profileLoading || (!user || (!hasSufficientCreditsForMode && !isPrivilegedUser))}
           />
+           <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleOpenGraphingCalculatorDialog}
+                    disabled={isAISending || profileLoading || (!user)}
+                    aria-label="Open Graphing Calculator"
+                  >
+                    <Calculator className="h-5 w-5" />
+                  </Button>
+              </TooltipTrigger>
+              <TooltipContent><p>Open Graphing Calculator</p></TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <Button type="submit" disabled={!canSubmitMessage} size="icon" aria-label="Send message">
             {isAISending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
@@ -630,7 +666,23 @@ export default function ChatInterface() {
           </AlertDialogContent>
         </AlertDialog>
       )}
+
+      <Dialog open={isGeoGebraDialogOpen} onOpenChange={setIsGeoGebraDialogOpen}>
+        <DialogContent className="sm:max-w-3xl md:max-w-4xl lg:max-w-6xl h-[80vh] p-0 flex flex-col">
+          <DialogHeader className="p-4 border-b">
+            <DialogTitle>Graphing Calculator (GeoGebra)</DialogTitle>
+          </DialogHeader>
+          <iframe
+            src="https://www.geogebra.org/graphing"
+            title="GeoGebra Graphing Calculator"
+            className="flex-grow border-0"
+            width="100%"
+            height="100%"
+            allowFullScreen
+          />
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
-    
+

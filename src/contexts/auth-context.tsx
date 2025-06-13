@@ -17,7 +17,7 @@ type AuthContextType = {
   loading: boolean; // Overall auth loading
   profileLoading: boolean; // Specific to profile fetching
   logout: () => Promise<void>;
-  deductCreditForAITutor: () => Promise<boolean>;
+  deductCreditForAITutor: (amountToDeduct?: number) => Promise<boolean>;
   deductCreditForFlashcards: (amountToDeduct: number) => Promise<boolean>;
   refreshUserProfile: () => Promise<void>;
   triggerStreakUpdate: () => Promise<void>;
@@ -25,7 +25,7 @@ type AuthContextType = {
   setPromptForUserDetails: (value: boolean) => void;
 };
 
-const authInstance: Auth = getAuth(app);
+const authInstanceGlobal: Auth = getAuth(app); // Renamed to avoid conflict
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -36,6 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profileLoading, setProfileLoading] = useState(true);
   const [promptForUserDetails, setPromptForUserDetails] = useState(false);
   const { toast } = useToast();
+  const authInstance = authInstanceGlobal; // Use the globally initialized instance
 
   const fetchUserProfile = useCallback(async (currentUser: User | null) => {
     if (currentUser) {
@@ -91,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
     return () => unsubscribe();
-  }, [fetchUserProfile]);
+  }, [fetchUserProfile, authInstance]);
 
   const logout = async () => {
     try {
@@ -105,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const deductCreditForAITutor = async (): Promise<boolean> => {
+  const deductCreditForAITutor = async (amountToDeduct: number = 1): Promise<boolean> => {
     if (!user || userProfile === null) {
       console.warn("Deduct credit called without user or profile.");
       return false;
@@ -116,12 +117,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return true;
     }
 
-    if (typeof userProfile.credits !== 'number' || userProfile.credits <= 0) {
-      console.log("User has no credits to deduct for AI Tutor.");
+    if (typeof userProfile.credits !== 'number' || userProfile.credits < amountToDeduct) {
+      console.log(`User has insufficient credits for AI Tutor. Needs ${amountToDeduct}, has ${userProfile.credits}.`);
       return false;
     }
     
-    const newCreditAmount = userProfile.credits - 1;
+    const newCreditAmount = userProfile.credits - amountToDeduct;
     try {
       await updateUserCredits(user.uid, newCreditAmount);
       await refreshUserProfile(); 
@@ -166,10 +167,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user) {
       try {
         await updateUserActivityAndStreak(user.uid);
-        await refreshUserProfile(); // Refresh profile to show updated streak
+        await refreshUserProfile(); 
       } catch (error) {
         console.error("Failed to trigger streak update via context:", error);
-        // Optionally show a toast to the user if this fails silently
       }
     }
   }, [user, refreshUserProfile]);
