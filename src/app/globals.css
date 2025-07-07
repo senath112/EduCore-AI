@@ -46,6 +46,22 @@ body {
     --sidebar-accent-foreground: 210 80% 45%; /* Darker blue for text on sidebar accent */
     --sidebar-border: 220 20% 88%;     /* Soft blue border */
     --sidebar-ring: 210 80% 55%;       /* Primary blue for focus */
+
+    /* HSL values for easier transparency derivation */
+    --card-hsl: 0 0% 100%;
+    --border-hsl: 220 20% 85%;
+    --background-hsl: 220 30% 96%;
+
+
+    /* Glassmorphism variables for light theme */
+    --glass-bg-light: hsla(var(--card-hsl), 0.55);
+    --glass-border-light: hsla(var(--border-hsl), 0.35);
+    --glass-shadow-light: 0 4px 16px 0 hsla(var(--foreground), 0.08);
+
+    /* Default to light theme glass vars */
+    --glass-bg: var(--glass-bg-light);
+    --glass-border: var(--glass-border-light);
+    --glass-shadow: var(--glass-shadow-light);
   }
 
   .dark {
@@ -84,17 +100,110 @@ body {
     --sidebar-accent-foreground: 210 85% 75%; /* Lighter blue for text on sidebar accent */
     --sidebar-border: 220 15% 25%;     /* Dark blue border */
     --sidebar-ring: 210 85% 65%;       /* Primary blue for focus */
+
+    /* HSL values for dark theme */
+    --dark-card-hsl: 220 20% 18%;
+    --dark-border-hsl: 220 15% 30%;
+    --dark-background-hsl: 220 20% 12%;
+
+    /* Glassmorphism variables for dark theme */
+    --glass-bg-dark: hsla(var(--dark-card-hsl), 0.55);
+    --glass-border-dark: hsla(var(--dark-border-hsl), 0.45);
+    --glass-shadow-dark: 0 4px 16px 0 hsla(0, 0%, 0%, 0.15);
+
+    /* Override with dark theme glass vars */
+    --glass-bg: var(--glass-bg-dark);
+    --glass-border: var(--glass-border-dark);
+    --glass-shadow: var(--glass-shadow-dark);
   }
 }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground; 
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+    /* Light mode gradient with more detail */
+    background-image: linear-gradient(145deg, 
+      hsl(210, 70%, 90%) 0%,  
+      hsl(225, 65%, 93%) 25%, 
+      hsl(190, 60%, 92%) 50%, 
+      hsl(240, 60%, 94%) 75%, 
+      hsl(210, 70%, 91%) 100%  
+    );
+    background-attachment: fixed;
+    position: relative; /* For positioning pseudo-elements */
+    overflow-x: hidden; /* Prevent scroll from large pseudo-elements */
+  }
+
+  .dark body {
+    /* Dark mode gradient with more detail */
+    background-image: linear-gradient(145deg, 
+      hsl(220, 30%, 18%) 0%,  
+      hsl(230, 25%, 15%) 30%, 
+      hsl(200, 35%, 12%) 60%, 
+      hsl(240, 20%, 16%) 85%, 
+      hsl(220, 30%, 17%) 100%  
+    );
+  }
+
+  /* Decorative circular sectors */
+  body::before,
+  body::after {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+    z-index: -1; /* Place them behind the content */
+    pointer-events: none; /* Ensure they don't interfere with interactions */
+    filter: blur(60px); /* Soften the edges */
+  }
+
+  /* Light mode circles */
+  body::before {
+    width: 60vw;
+    height: 60vw;
+    min-width: 400px;
+    min-height: 400px;
+    top: -20vh; /* Position partially off-screen */
+    left: -25vw;
+    background: radial-gradient(circle, hsla(var(--primary), 0.1) 0%, hsla(var(--primary), 0) 70%);
+    opacity: 0.6;
+    animation: move-circle-1 25s infinite alternate ease-in-out;
+  }
+
+  body::after {
+    width: 70vw;
+    height: 70vw;
+    min-width: 500px;
+    min-height: 500px;
+    bottom: -30vh; /* Position partially off-screen */
+    right: -35vw;
+    background: radial-gradient(circle, hsla(var(--secondary), 0.12) 0%, hsla(var(--secondary), 0) 70%);
+    opacity: 0.5;
+    animation: move-circle-2 30s infinite alternate ease-in-out;
+  }
+
+  /* Dark mode circles */
+  .dark body::before {
+    background: radial-gradient(circle, hsla(var(--primary), 0.08) 0%, hsla(var(--primary), 0) 70%); /* Use primary color from dark theme */
+    opacity: 0.5;
+  }
+
+  .dark body::after {
+    background: radial-gradient(circle, hsla(var(--secondary), 0.1) 0%, hsla(var(--secondary), 0) 70%); /* Use secondary color from dark theme */
+    opacity: 0.4;
+  }
+
+  @keyframes move-circle-1 {
+    0% { transform: translate(0, 0); }
+    50% { transform: translate(20vw, 15vh) scale(1.1); }
+    100% { transform: translate(0, 0); }
+  }
+
+  @keyframes move-circle-2 {
+    0% { transform: translate(0, 0) scale(1.2); }
+    50% { transform: translate(-25vw, -20vh) scale(1); }
+    100% { transform: translate(0, 0) scale(1.2); }
   }
 }

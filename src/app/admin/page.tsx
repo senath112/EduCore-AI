@@ -524,7 +524,7 @@ export default function AdminDashboardPage() {
       </header>
 
       <section className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-12">
-        <div className="p-6 border rounded-lg shadow-lg bg-card">
+        <div className="p-6 rounded-3xl shadow-lg bg-card">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-xl font-semibold text-card-foreground">User Management</h2>
             <Users className="h-6 w-6 text-primary" />
@@ -536,7 +536,7 @@ export default function AdminDashboardPage() {
           </Button>
         </div>
 
-        <div className="p-6 border rounded-lg shadow-lg bg-card">
+        <div className="p-6 rounded-3xl shadow-lg bg-card">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-xl font-semibold text-card-foreground">Content Moderation</h2>
             <Flag className="h-6 w-6 text-destructive" />
@@ -548,7 +548,7 @@ export default function AdminDashboardPage() {
           </Button>
         </div>
 
-        <div className="p-6 border rounded-lg shadow-lg bg-card">
+        <div className="p-6 rounded-3xl shadow-lg bg-card">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-xl font-semibold text-card-foreground">Support Tickets</h2>
             <Ticket className="h-6 w-6 text-accent" />
@@ -560,7 +560,7 @@ export default function AdminDashboardPage() {
           </Button>
         </div>
 
-        <div className="p-6 border rounded-lg shadow-lg bg-card">
+        <div className="p-6 rounded-3xl shadow-lg bg-card">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-xl font-semibold text-card-foreground">Credit Vouchers</h2>
             <Tags className="h-6 w-6 text-secondary" />
@@ -572,7 +572,7 @@ export default function AdminDashboardPage() {
           </Button>
         </div>
         
-        <div className="p-6 border rounded-lg shadow-lg bg-card">
+        <div className="p-6 rounded-3xl shadow-lg bg-card">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-xl font-semibold text-card-foreground">System Classes</h2>
             <BookOpenCheck className="h-6 w-6 text-indigo-500" />
@@ -1028,4 +1028,6 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
+    
+
     

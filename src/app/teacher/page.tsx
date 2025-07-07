@@ -70,7 +70,7 @@ export default function TeacherDashboardPage() {
   const [selectedQuizForEdit, setSelectedQuizForEdit] = useState<QuizData | null>(null); 
 
   const [isAddQuestionDialogOpen, setIsAddQuestionDialogOpen] = useState(false);
-  const [selectedQuizForQuestion, setSelectedQuizForQuestion] = useState<{ id: string, title: string } | null>(null);
+  const [selectedQuizForQuestion, setSelectedQuizForQuestion] = useState<{ id: string; title: string } | null>(null);
 
   const [isBulkAddQuestionsDialogOpen, setIsBulkAddQuestionsDialogOpen] = useState(false);
   const [selectedQuizForBulkAdd, setSelectedQuizForBulkAdd] = useState<{ id: string, title: string } | null>(null);
@@ -588,19 +588,19 @@ export default function TeacherDashboardPage() {
           ) : (
             <>
               <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6 text-center">
-                <div className="p-3 border rounded-lg bg-muted/30">
+                <div className="p-3 rounded-lg bg-muted/30">
                   <p className="text-2xl font-bold text-primary">{totalGeneratedVouchers}</p>
                   <p className="text-xs text-muted-foreground">Total Generated</p>
                 </div>
-                <div className="p-3 border rounded-lg bg-muted/30">
+                <div className="p-3 rounded-lg bg-muted/30">
                   <p className="text-2xl font-bold text-green-600">{totalRedeemedVouchers}</p>
                   <p className="text-xs text-muted-foreground">Total Redeemed</p>
                 </div>
-                <div className="p-3 border rounded-lg bg-muted/30">
+                <div className="p-3 rounded-lg bg-muted/30">
                   <p className="text-2xl font-bold text-blue-600">{totalActiveVouchers}</p>
                   <p className="text-xs text-muted-foreground">Currently Active</p>
                 </div>
-                 <div className="p-3 border rounded-lg bg-muted/30">
+                 <div className="p-3 rounded-lg bg-muted/30">
                   <p className="text-2xl font-bold text-destructive">{totalExpiredVouchers}</p>
                   <p className="text-xs text-muted-foreground">Expired</p>
                 </div>
@@ -750,3 +750,5 @@ export default function TeacherDashboardPage() {
     </>
   );
 }
+
+    
