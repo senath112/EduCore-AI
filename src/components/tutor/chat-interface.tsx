@@ -463,7 +463,7 @@ export default function ChatInterface() {
                 className={`p-3 rounded-lg max-w-[70%] shadow-md ${
                   msg.role === 'student'
                     ? 'bg-primary text-primary-foreground'
-                    : 'bg-card text-card-foreground border'
+                    : 'bg-card text-card-foreground'
                 }`}
               >
                 {msg.attachment && msg.attachment.type === 'image' && msg.attachment.previewUrl && (
@@ -685,4 +685,3 @@ export default function ChatInterface() {
     </>
   );
 }
-
