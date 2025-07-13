@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -211,17 +212,17 @@ body {
 .grecaptcha-badge {
   /* Positioning */
   position: fixed !important;
-  bottom: 15px !important;
+  bottom: 1rem !important; /* Align with dock's bottom (bottom-4 is 1rem) */
   right: -125px !important; /* Start mostly off-screen to the right */
   
   /* Visuals & Transitions */
   transition: right 0.3s ease !important; /* Smooth transition for sliding in */
-  z-index: 49 !important; /* Below the dock but above most other things */
+  z-index: 49 !important; /* Below the dock (z-50) but above most other things */
   box-shadow: 0px 2px 10px rgba(0,0,0,0.2) !important;
   border-radius: 3px !important;
   overflow: hidden !important;
 }
 
 .grecaptcha-badge:hover {
-  right: 15px !important; /* Slide into view on hover */
+  right: 1rem !important; /* Slide into view on hover */
 }
