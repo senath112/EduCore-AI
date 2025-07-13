@@ -212,7 +212,7 @@ body {
 .grecaptcha-badge {
   /* Positioning */
   position: fixed !important;
-  bottom: 1rem !important; /* Align with dock's bottom (bottom-4 is 1rem) */
+  bottom: 1rem !important; /* Position from the bottom of the viewport */
   left: -150px !important; /* Start mostly off-screen to the left */
   
   /* Visuals & Transitions */
