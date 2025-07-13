@@ -33,9 +33,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import DynamicChartRenderer from './dynamic-chart-renderer';
-// GeoGebraPlot component is no longer used here
 import { SUBJECTS } from '@/lib/constants';
-import ReCAPTCHA from 'react-google-recaptcha';
 
 type MessageAttachment = {
   name: string;
@@ -53,7 +51,6 @@ type Message = {
   attachment?: MessageAttachment;
   chartType?: "bar" | "line" | "pie";
   chartData?: ChartDataPoint[];
-  // geogebraExpression removed
 };
 
 const formatBoldText = (text: string) => {
@@ -72,7 +69,7 @@ const formatBoldText = (text: string) => {
 
 export default function ChatInterface() {
   const settings = useSettings();
-  const { user, userProfile, loading: authLoading, profileLoading, deductCreditForAITutor, triggerStreakUpdate } = useAuth();
+  const { user, userProfile, loading: authLoading, profileLoading, deductCreditForAITutor, triggerStreakUpdate, recaptchaRef } = useAuth();
   const { toast } = useToast();
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -93,9 +90,7 @@ export default function ChatInterface() {
 
   const [isGeoGebraDialogOpen, setIsGeoGebraDialogOpen] = useState(false);
 
-  const recaptchaRef = useRef<ReCAPTCHA>(null);
   const isRecaptchaEnabled = process.env.NEXT_PUBLIC_RECAPTCHA_ENABLED === "true";
-  const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
 
   useEffect(() => {
     return () => {
@@ -140,7 +135,7 @@ export default function ChatInterface() {
         lastContextKeyForGreeting.current = null;
         greetingSentForCurrentContext.current = false;
     }
-  }, [user, settings.subject, settings.language, settings.learningMode, authLoading, profileLoading, messages.length]); // messages.length might still cause issues here
+  }, [user, settings.subject, settings.language, settings.learningMode, authLoading, profileLoading, messages.length]);
 
 
   useEffect(() => {
@@ -190,13 +185,21 @@ export default function ChatInterface() {
 
   const isPrivilegedUser = userProfile?.isAdmin || userProfile?.isTeacher;
   const costForCurrentMode = settings.learningMode === 'deep' ? 3 : 1;
-  const currentCredits = userProfile?.credits;
-  const hasSufficientCreditsForMode = isPrivilegedUser || (typeof currentCredits === 'number' && currentCredits >= costForCurrentMode);
 
-  const canSubmitMessage = !isAISending && !profileLoading && (currentMessage.trim() !== '' || !!selectedImageFile) && hasSufficientCreditsForMode && !!user;
+  const canInteract = (() => {
+    if (authLoading || profileLoading) return false;
+    if (!user) return false;
+    if (!userProfile) return false;
+    if (isPrivilegedUser) return true;
+    return (userProfile.credits ?? 0) >= costForCurrentMode;
+  })();
+
+  const isInputDisabled = isAISending || !canInteract;
+
+  const canSubmitMessage = !isAISending && (currentMessage.trim() !== '' || !!selectedImageFile) && canInteract;
 
   const handleSendMessage = async () => {
-    if (isRecaptchaEnabled && recaptchaRef.current && recaptchaSiteKey) {
+    if (isRecaptchaEnabled && recaptchaRef.current) {
       try {
         const token = await recaptchaRef.current.executeAsync();
         if (!token) {
@@ -304,7 +307,6 @@ export default function ChatInterface() {
         timestamp: new Date().toISOString(),
         chartType: result.chartType,
         chartData: result.chartData,
-        // geogebraExpression removed
       };
       setMessages(prevMessages => [...prevMessages, tutorResponse]);
 
@@ -402,11 +404,13 @@ export default function ChatInterface() {
 
 
   let placeholderText = "Ask a question or request an explanation...";
-  if (profileLoading) {
+  if (authLoading || profileLoading) {
     placeholderText = "Loading profile & credits...";
   } else if (!user) {
     placeholderText = "Please log in to chat.";
-  } else if (!isPrivilegedUser && userProfile && (userProfile.credits ?? 0) < costForCurrentMode) {
+  } else if (!userProfile) {
+    placeholderText = "Finalizing your profile setup...";
+  } else if (!isPrivilegedUser && (userProfile.credits ?? 0) < costForCurrentMode) {
     placeholderText = `Insufficient credits (need ${costForCurrentMode}).`;
   }
 
@@ -414,13 +418,6 @@ export default function ChatInterface() {
   return (
     <>
     <Card className="w-full shadow-xl flex flex-col flex-grow">
-      {isRecaptchaEnabled && recaptchaSiteKey && (
-          <ReCAPTCHA
-            ref={recaptchaRef}
-            sitekey={recaptchaSiteKey}
-            size="invisible"
-          />
-        )}
       <CardContent className="p-0 flex-grow flex flex-col">
         <ScrollArea className="flex-grow w-full p-4" ref={scrollAreaRef}>
         <TooltipProvider>
@@ -552,7 +549,7 @@ export default function ChatInterface() {
               <Avatar className="h-8 w-8">
                  <AvatarFallback><Bot size={18}/></AvatarFallback>
               </Avatar>
-              <div className="p-3 rounded-lg bg-card text-card-foreground border shadow-md">
+              <div className="p-3 rounded-lg bg-card text-card-foreground shadow-md">
                 <Loader2 className="h-5 w-5 animate-spin text-primary" />
               </div>
             </div>
@@ -560,13 +557,6 @@ export default function ChatInterface() {
         </ScrollArea>
       </CardContent>
       <CardFooter className="p-4 border-t flex flex-col">
-        <div className="flex items-center justify-center text-xs text-muted-foreground mb-2 w-full gap-2">
-            <Lock className="h-3 w-3" />
-            <span>End-to-end Encrypted</span>
-            <span className="mx-1">|</span>
-            <AlertTriangle className="h-3 w-3 text-amber-500" />
-            <span>EduCore AI can make mistakes, so double check.</span>
-        </div>
         {selectedImageFile && imagePreviewUrl && (
           <div className="mb-2 p-2 border rounded-md relative flex items-center gap-2 bg-muted w-full">
             <Image
@@ -598,7 +588,7 @@ export default function ChatInterface() {
                   variant="ghost"
                   size="icon"
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={isAISending || profileLoading || (!hasSufficientCreditsForMode && !isPrivilegedUser)}
+                  disabled={isInputDisabled}
                   aria-label="Attach image"
                 >
                   <Paperclip className="h-5 w-5" />
@@ -615,7 +605,7 @@ export default function ChatInterface() {
             accept="image/*"
             className="hidden"
             id="file-upload-input"
-            disabled={isAISending || profileLoading || (!hasSufficientCreditsForMode && !isPrivilegedUser)}
+            disabled={isInputDisabled}
           />
           <Input
             type="text"
@@ -623,7 +613,7 @@ export default function ChatInterface() {
             value={currentMessage}
             onChange={(e) => setCurrentMessage(e.target.value)}
             className="flex-grow"
-            disabled={isAISending || profileLoading || (!user || (!hasSufficientCreditsForMode && !isPrivilegedUser))}
+            disabled={isInputDisabled}
           />
            <TooltipProvider>
             <Tooltip>
@@ -633,7 +623,7 @@ export default function ChatInterface() {
                     variant="ghost"
                     size="icon"
                     onClick={handleOpenGraphingCalculatorDialog}
-                    disabled={isAISending || profileLoading || (!user)}
+                    disabled={isAISending || authLoading || profileLoading || !user}
                     aria-label="Open Graphing Calculator"
                   >
                     <Calculator className="h-5 w-5" />

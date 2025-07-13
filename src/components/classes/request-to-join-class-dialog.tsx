@@ -1,88 +1,137 @@
-import { z } from 'zod';
 
-export const SignupFormSchema = z.object({
-  email: z.string().email({ message: "Please enter a valid email address." }),
-  password: z.string().min(6, { message: "Password must be at least 6 characters long." }),
-  confirmPassword: z.string().min(6, { message: "Password must be at least 6 characters long." }),
-  age: z.coerce.number().min(10, { message: "Age must be at least 10." }).max(100, { message: "Age must be less than 100."}),
-  alFacingYear: z.coerce.number().min(new Date().getFullYear(), { message: "A/L facing year must be current year or later." }).max(new Date().getFullYear() + 10, { message: "A/L facing year seems too far in the future."}),
-  phoneNumber: z.string().regex(/^\+?[0-9]{10,15}$/, { message: "Please enter a valid phone number (10-15 digits, optionally starting with +)." }),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ["confirmPassword"],
-});
+"use client";
 
-export type SignupFormValues = z.infer<typeof SignupFormSchema>;
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useToast } from '@/hooks/use-toast';
+import { sendJoinRequest } from '@/services/user-service';
+import type { ClassData } from '@/services/class-service';
+import type { User } from 'firebase/auth';
+import type { UserProfile } from '@/services/user-service';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Loader2, Send } from 'lucide-react';
+import { useAuth } from '@/hooks/use-auth';
+import { ClassJoinRequestSchema, type ClassJoinRequestFormValues } from '@/lib/schemas';
 
-export const LoginFormSchema = z.object({
-  email: z.string().email({ message: "Please enter a valid email address." }),
-  password: z.string().min(1, { message: "Password is required." }),
-});
+interface RequestToJoinClassDialogProps {
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  classToJoin: ClassData | null;
+  user: User;
+  userProfile: UserProfile;
+  onJoinRequestSent: () => void;
+}
 
-export type LoginFormValues = z.infer<typeof LoginFormSchema>;
+export default function RequestToJoinClassDialog({
+  isOpen,
+  onOpenChange,
+  classToJoin,
+  user,
+  userProfile,
+  onJoinRequestSent,
+}: RequestToJoinClassDialogProps) {
+  const { toast } = useToast();
+  const [isProcessing, setIsProcessing] = useState(false);
+  const { recaptchaRef } = useAuth(); // Get the global ref from context
+  const isRecaptchaEnabled = process.env.NEXT_PUBLIC_RECAPTCHA_ENABLED === "true";
 
-export const CompleteProfileFormSchema = z.object({
-  age: z.coerce.number().min(10, { message: "Age must be at least 10." }).max(100, { message: "Age must be less than 100."}),
-  alFacingYear: z.coerce.number().min(new Date().getFullYear(), { message: "A/L facing year must be current year or later." }).max(new Date().getFullYear() + 10, { message: "A/L facing year seems too far in the future."}),
-  phoneNumber: z.string().regex(/^\+?[0-9]{10,15}$/, { message: "Please enter a valid phone number (10-15 digits, optionally starting with +)." }),
-});
+  const form = useForm<ClassJoinRequestFormValues>({
+    resolver: zodResolver(ClassJoinRequestSchema),
+    defaultValues: {
+      message: '',
+    },
+  });
 
-export type CompleteProfileFormValues = z.infer<typeof CompleteProfileFormSchema>;
+  const onSubmit = async (values: ClassJoinRequestFormValues) => {
+    if (!classToJoin) {
+      toast({ variant: "destructive", title: "Error", description: "Class information is missing." });
+      return;
+    }
+    setIsProcessing(true);
 
-export const AdminEditUserFormSchema = z.object({
-  displayName: z.string().optional(),
-  age: z.coerce.number().min(10, { message: "Age must be at least 10." }).max(100, { message: "Age must be less than 100."}).optional().or(z.literal('')),
-  alFacingYear: z.coerce.number().min(new Date().getFullYear(), { message: "A/L facing year must be current year or later." }).max(new Date().getFullYear() + 10, { message: "A/L facing year seems too far in the future."}).optional().or(z.literal('')),
-  phoneNumber: z.string().regex(/^\+?[0-9]{10,15}$/, { message: "Please enter a valid phone number (10-15 digits, optionally starting with +)." }).optional().or(z.literal('')),
-  credits: z.coerce.number().min(0, { message: "Credits cannot be negative."}),
-  isAdmin: z.boolean(),
-  isTeacher: z.boolean(),
-  isAccountDisabled: z.boolean(),
-}).transform(values => ({
-    ...values,
-    age: values.age === '' ? undefined : values.age,
-    alFacingYear: values.alFacingYear === '' ? undefined : values.alFacingYear,
-    phoneNumber: values.phoneNumber === '' ? undefined : values.phoneNumber,
-}));
+    if (isRecaptchaEnabled && recaptchaRef.current) {
+      try {
+        const token = await recaptchaRef.current.executeAsync();
+        if (!token) {
+          toast({ variant: "destructive", title: "reCAPTCHA Error", description: "Failed to verify. Please try again." });
+          setIsProcessing(false);
+          recaptchaRef.current.reset();
+          return;
+        }
+      } catch (error) {
+        toast({ variant: "destructive", title: "reCAPTCHA Error", description: "Verification error." });
+        setIsProcessing(false);
+        if (recaptchaRef.current) recaptchaRef.current.reset();
+        return;
+      }
+    }
 
+    try {
+      await sendJoinRequest(classToJoin.id, user.uid, userProfile.displayName || user.email, user.email, values.message);
+      toast({ title: "Request Sent", description: `Your request to join "${classToJoin.name}" has been sent to the teacher for approval.` });
+      onJoinRequestSent();
+    } catch (error: any) {
+      console.error("Error sending join request:", error);
+      toast({ variant: "destructive", title: "Failed to Send Request", description: error.message || "Could not send your request." });
+    } finally {
+      setIsProcessing(false);
+      if (recaptchaRef.current) recaptchaRef.current.reset();
+    }
+  };
 
-export type AdminEditUserFormValues = z.infer<typeof AdminEditUserFormSchema>;
+  if (!classToJoin) return null;
 
-export const SupportRequestFormSchema = z.object({
-  comment: z.string().min(10, { message: "Please provide at least 10 characters in your comment." }).max(500, { message: "Comment cannot exceed 500 characters." }),
-});
-export type SupportRequestFormValues = z.infer<typeof SupportRequestFormSchema>;
-
-export const CreateClassFormSchema = z.object({
-  className: z.string().min(3, { message: "Class name must be at least 3 characters long." }).max(100, { message: "Class name cannot exceed 100 characters." }),
-  classDescription: z.string().min(10, { message: "Description must be at least 10 characters long." }).max(500, { message: "Description cannot exceed 500 characters." }),
-});
-
-export type CreateClassFormValues = z.infer<typeof CreateClassFormSchema>;
-
-export const GenerateVouchersFormSchema = z.object({
-  creditsPerVoucher: z.coerce.number().min(1, { message: "Credits must be at least 1." }).max(1000, { message: "Credits per voucher cannot exceed 1000."}),
-  numberOfVouchers: z.coerce.number().min(1, { message: "Number of vouchers must be at least 1." }).max(100, { message: "Cannot generate more than 100 vouchers at a time."}),
-  selectedClassId: z.string().optional(), // ID of the class to restrict to, empty if no restriction
-});
-
-export type GenerateVouchersFormValues = z.infer<typeof GenerateVouchersFormSchema>;
-
-export const JoinClassSchema = z.object({
-  friendlyId: z.string().min(3, { message: "Class ID must be at least 3 characters." }).max(10, { message: "Class ID seems too long."}),
-});
-export type JoinClassFormValues = z.infer<typeof JoinClassSchema>;
-
-export const RedeemVoucherSchema = z.object({
-  voucherCode: z.string()
-    .length(8, { message: "Voucher code must be 8 characters." })
-    .regex(/^[A-Z0-9]{8}$/, { message: "Invalid voucher code format. Must be 8 uppercase letters/numbers." })
-    .transform((val) => val.toUpperCase()),
-});
-export type RedeemVoucherFormValues = z.infer<typeof RedeemVoucherSchema>;
-
-// Removed ClassJoinRequestSchema and ClassJoinRequestFormValues
-// export const ClassJoinRequestSchema = z.object({
-//   message: z.string().max(200, "Message cannot exceed 200 characters.").optional(),
-// });
-// export type ClassJoinRequestFormValues = z.infer<typeof ClassJoinRequestSchema>;
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Request to Join "{classToJoin.name}"</DialogTitle>
+          <DialogDescription>
+            Your request will be sent to the instructor, {classToJoin.instructorName}, for approval. You can add an optional message.
+          </DialogDescription>
+        </DialogHeader>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-2">
+            <FormField
+              control={form.control}
+              name="message"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Optional Message to Instructor</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="e.g., Hi, I'm a student from the morning batch."
+                      disabled={isProcessing}
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <DialogFooter className="pt-3">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isProcessing}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isProcessing}>
+                {isProcessing ? <Loader2 className="animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                Send Request
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}

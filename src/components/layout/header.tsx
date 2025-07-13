@@ -23,7 +23,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuGroup,
 } from "@/components/ui/dropdown-menu";
-import { User as UserIcon, LogOut, LogIn, CircleDollarSign, Settings, LifeBuoy, Award, Flame, Sun, Moon, UserCog, BookOpenCheck, MessagesSquare, Trophy, Layers, Puzzle, ClipboardList, CalendarCheck, BookOpen } from 'lucide-react';
+import { User as UserIcon, LogOut, LogIn, CircleDollarSign, Settings, LifeBuoy, Award, Flame, Sun, Moon, UserCog, BookOpenCheck, MessagesSquare, Trophy, Layers, Puzzle, ClipboardList, CalendarCheck, BookOpen, Calculator } from 'lucide-react';
 
 export default function Header() {
   const { user, userProfile, logout, loading: authLoading, profileLoading } = useAuth();
@@ -133,6 +133,9 @@ export default function Header() {
                           </DropdownMenuItem>
                           <DropdownMenuItem asChild>
                               <Link href="/tools/marks-analyzer"><ClipboardList className="mr-2 h-4 w-4" />Marks Tracker</Link>
+                          </DropdownMenuItem>
+                           <DropdownMenuItem asChild>
+                              <Link href="/tools/limits-explainer"><Calculator className="mr-2 h-4 w-4" />Limits Explainer</Link>
                           </DropdownMenuItem>
                           <DropdownMenuItem asChild>
                             <Link href="/planner"><CalendarCheck className="mr-2 h-4 w-4" />Study Planner</Link>

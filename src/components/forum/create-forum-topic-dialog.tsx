@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useRef } from 'react'; // Added useRef
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { CreateForumTopicSchema, type CreateForumTopicFormValues } from '@/lib/schemas';
@@ -21,7 +21,6 @@ import {
 } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Loader2, PlusCircle } from 'lucide-react';
-import ReCAPTCHA from 'react-google-recaptcha'; // Added ReCAPTCHA import
 
 interface CreateForumTopicDialogProps {
   isOpen: boolean;
@@ -30,13 +29,11 @@ interface CreateForumTopicDialogProps {
 }
 
 export default function CreateForumTopicDialog({ isOpen, onOpenChange, onTopicCreated }: CreateForumTopicDialogProps) {
-  const { user, userProfile } = useAuth();
+  const { user, userProfile, recaptchaRef } = useAuth();
   const { toast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const recaptchaRef = useRef<ReCAPTCHA>(null);
   const isRecaptchaEnabled = process.env.NEXT_PUBLIC_RECAPTCHA_ENABLED === "true";
-  const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
 
   const form = useForm<CreateForumTopicFormValues>({
     resolver: zodResolver(CreateForumTopicSchema),
@@ -53,7 +50,7 @@ export default function CreateForumTopicDialog({ isOpen, onOpenChange, onTopicCr
     }
     setIsProcessing(true);
 
-    if (isRecaptchaEnabled && recaptchaRef.current && recaptchaSiteKey) {
+    if (isRecaptchaEnabled && recaptchaRef.current) {
       try {
         const token = await recaptchaRef.current.executeAsync();
         if (!token) {
@@ -98,13 +95,6 @@ export default function CreateForumTopicDialog({ isOpen, onOpenChange, onTopicCr
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
-        {isRecaptchaEnabled && recaptchaSiteKey && (
-          <ReCAPTCHA
-            ref={recaptchaRef}
-            sitekey={recaptchaSiteKey}
-            size="invisible"
-          />
-        )}
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <PlusCircle className="h-6 w-6" /> Create New Forum Topic

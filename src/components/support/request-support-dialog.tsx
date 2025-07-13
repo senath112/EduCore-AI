@@ -1,10 +1,9 @@
 
 "use client";
 
-import { useEffect, useState, useRef } from 'react'; // Added useRef
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 import { useAuth } from '@/hooks/use-auth';
 import { useSettings } from '@/hooks/use-settings';
 import { useToast } from '@/hooks/use-toast';
@@ -15,7 +14,6 @@ import type { SupportRequestFormValues } from '@/lib/schemas';
 import { SupportRequestFormSchema } from '@/lib/schemas';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import {
   Dialog,
@@ -27,7 +25,6 @@ import {
 } from '@/components/ui/dialog';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Loader2, Send, Info } from 'lucide-react';
-import ReCAPTCHA from 'react-google-recaptcha'; // Added ReCAPTCHA import
 
 interface RequestSupportDialogProps {
   isOpen: boolean;
@@ -35,16 +32,14 @@ interface RequestSupportDialogProps {
 }
 
 export default function RequestSupportDialog({ isOpen, onOpenChange }: RequestSupportDialogProps) {
-  const { user, userProfile } = useAuth();
+  const { user, userProfile, recaptchaRef } = useAuth();
   const { subject, language } = useSettings();
   const { toast } = useToast();
   
   const [supportId, setSupportId] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const recaptchaRef = useRef<ReCAPTCHA>(null);
   const isRecaptchaEnabled = process.env.NEXT_PUBLIC_RECAPTCHA_ENABLED === "true";
-  const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
 
   const form = useForm<SupportRequestFormValues>({
     resolver: zodResolver(SupportRequestFormSchema),
@@ -67,7 +62,7 @@ export default function RequestSupportDialog({ isOpen, onOpenChange }: RequestSu
     }
     setIsProcessing(true);
 
-    if (isRecaptchaEnabled && recaptchaRef.current && recaptchaSiteKey) {
+    if (isRecaptchaEnabled && recaptchaRef.current) {
       try {
         const token = await recaptchaRef.current.executeAsync();
         if (!token) {
@@ -123,13 +118,6 @@ export default function RequestSupportDialog({ isOpen, onOpenChange }: RequestSu
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
-        {isRecaptchaEnabled && recaptchaSiteKey && (
-          <ReCAPTCHA
-            ref={recaptchaRef}
-            sitekey={recaptchaSiteKey}
-            size="invisible"
-          />
-        )}
         <DialogHeader>
           <DialogTitle>Request Support</DialogTitle>
           <DialogDescription>

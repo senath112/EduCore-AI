@@ -3,7 +3,7 @@
 import { useState, useRef, type MouseEvent } from 'react';
 import Link from 'next/link';
 import {
-  Home, BookOpen, Layers, Puzzle, ClipboardList, Trophy, CalendarCheck
+  Home, BookOpen, Layers, Puzzle, ClipboardList, Trophy, CalendarCheck, Calculator
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -16,6 +16,7 @@ const DOCK_ITEMS = [
   { id: 'flashcards', label: 'Flashcards', icon: Layers, href: '/tools/flashcards' },
   { id: 'puzzle', label: 'Puzzle Maker', icon: Puzzle, href: '/tools/puzzle-maker' },
   { id: 'marks', label: 'Marks Tracker', icon: ClipboardList, href: '/tools/marks-analyzer' },
+  { id: 'limits', label: 'Limits Explainer', icon: Calculator, href: '/tools/limits-explainer' },
   { id: 'leaderboard', label: 'Leaderboard', icon: Trophy, href: '/leaderboard' },
 ];
 

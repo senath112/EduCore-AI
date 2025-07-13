@@ -18,20 +18,17 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/use-auth';
-import ReCAPTCHA from 'react-google-recaptcha';
 
 export default function LoginForm() {
   const router = useRouter();
   const { toast } = useToast();
-  const { refreshUserProfile, authInstance } = useAuth();
+  const { refreshUserProfile, authInstance, recaptchaRef } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [isResendingVerification, setIsResendingVerification] = useState(false);
   const [showResendVerificationButtonForEmail, setShowResendVerificationButtonForEmail] = useState<string | null>(null);
-  const recaptchaRef = useRef<ReCAPTCHA>(null);
 
   const isRecaptchaEnabled = process.env.NEXT_PUBLIC_RECAPTCHA_ENABLED === "true";
-  const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(LoginFormSchema),
@@ -70,7 +67,7 @@ export default function LoginForm() {
   };
 
   const onSubmit = async (values: LoginFormValues) => {
-    if (isRecaptchaEnabled && recaptchaRef.current && recaptchaSiteKey) {
+    if (isRecaptchaEnabled && recaptchaRef.current) {
       try {
         const token = await recaptchaRef.current.executeAsync();
         if (!token) {
@@ -207,19 +204,6 @@ export default function LoginForm() {
                 </FormItem>
               )}
             />
-            {isRecaptchaEnabled && recaptchaSiteKey && (
-              <FormItem>
-                <ReCAPTCHA
-                  ref={recaptchaRef}
-                  sitekey={recaptchaSiteKey}
-                  size="invisible" // For v3, it's invisible
-                  // onChange is not primarily used for v3 token fetching on submit
-                />
-                 <p className="text-xs text-muted-foreground mt-1">
-                  This site is protected by reCAPTCHA and the Google Privacy Policy and Terms of Service apply. Server-side validation is required for true protection.
-                </p>
-              </FormItem>
-            )}
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
             <Button type="submit" className="w-full" disabled={isSubmitDisabled}>
