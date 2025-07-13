@@ -207,9 +207,21 @@ body {
   }
 }
 
-/* Position the reCAPTCHA badge */
+/* Position the reCAPTCHA badge and make it expand on hover */
 .grecaptcha-badge {
-  bottom: 85px !important; /* Raise it above the dock */
-  right: 15px !important;
+  /* Positioning */
+  position: fixed !important;
+  bottom: 15px !important;
+  right: -125px !important; /* Start mostly off-screen to the right */
+  
+  /* Visuals & Transitions */
+  transition: right 0.3s ease !important; /* Smooth transition for sliding in */
   z-index: 49 !important; /* Below the dock but above most other things */
+  box-shadow: 0px 2px 10px rgba(0,0,0,0.2) !important;
+  border-radius: 3px !important;
+  overflow: hidden !important;
+}
+
+.grecaptcha-badge:hover {
+  right: 15px !important; /* Slide into view on hover */
 }
