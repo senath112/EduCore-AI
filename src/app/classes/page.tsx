@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from 'react'; // Added useRef
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { getAllClasses, getClassByFriendlyId, type ClassData } from '@/services/class-service';
@@ -18,14 +18,13 @@ import Link from 'next/link';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import type { RedeemVoucherFormValues, JoinClassFormValues } from '@/lib/schemas';
-import { RedeemVoucherSchema, JoinClassSchema } from '@/lib/schemas';
-import { Separator } from '@/components/ui/separator';
-import ReCAPTCHA from 'react-google-recaptcha'; // Added ReCAPTCHA import
+import type { RedeemVoucherFormValues } from '@/lib/schemas';
+import { RedeemVoucherSchema } from '@/lib/schemas';
+import RequestToJoinClassDialog from '@/components/classes/request-to-join-class-dialog';
 
 
 export default function ClassesPage() {
-  const { user, userProfile, loading: authLoading, profileLoading, refreshUserProfile } = useAuth();
+  const { user, userProfile, loading: authLoading, profileLoading, refreshUserProfile, recaptchaRef } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
 
@@ -33,29 +32,22 @@ export default function ClassesPage() {
   const [loadingAllClasses, setLoadingAllClasses] = useState(true);
   const [processingClassId, setProcessingClassId] = useState<string | null>(null);
   const [isRedeemingVoucher, setIsRedeemingVoucher] = useState(false);
-  const [isJoiningClass, setIsJoiningClass] = useState(false);
+  
+  const [isRequestJoinDialogOpen, setIsRequestJoinDialogOpen] = useState(false);
+  const [selectedClassForRequest, setSelectedClassForRequest] = useState<ClassData | null>(null);
+
 
   const [classQuizzes, setClassQuizzes] = useState<Record<string, QuizData[]>>({});
   const [loadingClassQuizzes, setLoadingClassQuizzes] = useState<Record<string, boolean>>({});
 
   const isLoading = authLoading || profileLoading;
-
-  const redeemVoucherRecaptchaRef = useRef<ReCAPTCHA>(null);
-  const joinClassRecaptchaRef = useRef<ReCAPTCHA>(null);
+  
   const isRecaptchaEnabled = process.env.NEXT_PUBLIC_RECAPTCHA_ENABLED === "true";
-  const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
 
   const redeemVoucherForm = useForm<RedeemVoucherFormValues>({
     resolver: zodResolver(RedeemVoucherSchema),
     defaultValues: {
       voucherCode: '',
-    },
-  });
-
-  const joinClassForm = useForm<JoinClassFormValues>({
-    resolver: zodResolver(JoinClassSchema),
-    defaultValues: {
-      friendlyId: '',
     },
   });
 
@@ -105,6 +97,21 @@ export default function ClassesPage() {
     }
   }, [user, userProfile, isLoading, router, fetchClassesAndQuizzes]);
 
+  const openRequestToJoinDialog = (classToJoin: ClassData) => {
+    if (userProfile?.enrolledClassIds && userProfile.enrolledClassIds[classToJoin.id]) {
+      toast({ title: "Already Enrolled", description: `You are already in "${classToJoin.name}".` });
+      return;
+    }
+    const hasPendingRequest = classToJoin.pendingJoinRequests && Object.keys(classToJoin.pendingJoinRequests).some(key => key === user?.uid);
+    if(hasPendingRequest){
+        toast({ title: "Request Pending", description: `Your request to join "${classToJoin.name}" is already pending approval.` });
+        return;
+    }
+
+    setSelectedClassForRequest(classToJoin);
+    setIsRequestJoinDialogOpen(true);
+  };
+
 
   const handleLeaveClass = async (classId: string) => {
     if (!user) return;
@@ -133,13 +140,13 @@ export default function ClassesPage() {
     if (!user || !userProfile) return;
     setIsRedeemingVoucher(true);
 
-    if (isRecaptchaEnabled && redeemVoucherRecaptchaRef.current && recaptchaSiteKey) {
+    if (isRecaptchaEnabled && recaptchaRef.current) {
       try {
-        const token = await redeemVoucherRecaptchaRef.current.executeAsync();
+        const token = await recaptchaRef.current.executeAsync();
         if (!token) {
           toast({ variant: "destructive", title: "reCAPTCHA Error", description: "Failed to verify reCAPTCHA. Please try again." });
           setIsRedeemingVoucher(false);
-          redeemVoucherRecaptchaRef.current.reset();
+          recaptchaRef.current.reset();
           return;
         }
         console.warn(
@@ -150,7 +157,7 @@ export default function ClassesPage() {
         console.error("reCAPTCHA execution error:", error);
         toast({ variant: "destructive", title: "reCAPTCHA Error", description: "An error occurred during reCAPTCHA verification." });
         setIsRedeemingVoucher(false);
-        if (redeemVoucherRecaptchaRef.current) redeemVoucherRecaptchaRef.current.reset();
+        if (recaptchaRef.current) recaptchaRef.current.reset();
         return;
       }
     }
@@ -183,82 +190,9 @@ export default function ClassesPage() {
       });
     } finally {
       setIsRedeemingVoucher(false);
-      if (isRecaptchaEnabled && redeemVoucherRecaptchaRef.current) redeemVoucherRecaptchaRef.current.reset();
+      if (isRecaptchaEnabled && recaptchaRef.current) recaptchaRef.current.reset();
     }
   };
-
-  const handleJoinClassSubmit = async (values: JoinClassFormValues) => {
-    if (!user || !userProfile) return;
-    setIsJoiningClass(true);
-
-    if (isRecaptchaEnabled && joinClassRecaptchaRef.current && recaptchaSiteKey) {
-      try {
-        const token = await joinClassRecaptchaRef.current.executeAsync();
-        if (!token) {
-          toast({ variant: "destructive", title: "reCAPTCHA Error", description: "Failed to verify reCAPTCHA. Please try again." });
-          setIsJoiningClass(false);
-          joinClassRecaptchaRef.current.reset();
-          return;
-        }
-        console.warn(
-          "reCAPTCHA v3 token obtained for Class Join:", token,
-          "IMPORTANT: This token MUST be verified server-side with your secret key for security."
-        );
-      } catch (error) {
-        console.error("reCAPTCHA execution error:", error);
-        toast({ variant: "destructive", title: "reCAPTCHA Error", description: "An error occurred during reCAPTCHA verification." });
-        setIsJoiningClass(false);
-        if (joinClassRecaptchaRef.current) joinClassRecaptchaRef.current.reset();
-        return;
-      }
-    }
-
-    try {
-      const classToJoin = await getClassByFriendlyId(values.friendlyId);
-      if (!classToJoin) {
-        toast({
-          variant: "destructive",
-          title: "Class Not Found",
-          description: `No class found with ID: ${values.friendlyId}. Please check the ID and try again.`,
-        });
-        setIsJoiningClass(false);
-        if (isRecaptchaEnabled && joinClassRecaptchaRef.current) joinClassRecaptchaRef.current.reset();
-        return;
-      }
-
-      const alreadyEnrolled = userProfile.enrolledClassIds && userProfile.enrolledClassIds[classToJoin.id];
-      if (alreadyEnrolled) {
-        toast({
-          title: "Already Enrolled",
-          description: `You are already enrolled in "${classToJoin.name}".`,
-        });
-        setIsJoiningClass(false);
-        if (isRecaptchaEnabled && joinClassRecaptchaRef.current) joinClassRecaptchaRef.current.reset();
-        return;
-      }
-
-      await enrollInClass(user.uid, classToJoin.id);
-      toast({
-        title: "Successfully Joined Class!",
-        description: `You have been enrolled in "${classToJoin.name}".`,
-      });
-      await refreshUserProfile();
-      fetchClassesAndQuizzes(); 
-      joinClassForm.reset();
-
-    } catch (error: any) {
-      console.error("Error joining class:", error);
-      toast({
-        variant: "destructive",
-        title: "Error Joining Class",
-        description: error.message || "Could not join the class. Please try again.",
-      });
-    } finally {
-      setIsJoiningClass(false);
-      if (isRecaptchaEnabled && joinClassRecaptchaRef.current) joinClassRecaptchaRef.current.reset();
-    }
-  };
-
 
   if (isLoading || (loadingAllClasses && !allClasses.length)) { 
     return (
@@ -286,6 +220,8 @@ export default function ClassesPage() {
 
   const enrolledClassIds = userProfile?.enrolledClassIds || {};
   const myClasses = allClasses.filter(cls => enrolledClassIds[cls.id]);
+  const availableClasses = allClasses.filter(cls => !enrolledClassIds[cls.id]);
+
 
   return (
     <>
@@ -296,75 +232,18 @@ export default function ClassesPage() {
           <h1 className="text-3xl font-bold text-primary">Manage Your Classes</h1>
         </div>
         <p className="text-lg text-muted-foreground">
-          Redeem credit vouchers, join new classes using a Class ID, or manage your current enrollments.
+          Redeem credit vouchers, join new classes, or manage your current enrollments.
         </p>
       </header>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-        <Card className="shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <UserPlus className="h-6 w-6 text-secondary" />
-              Join a New Class
-            </CardTitle>
-            <CardDescription>Enter the Friendly Class ID provided by your teacher.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isRecaptchaEnabled && recaptchaSiteKey && (
-              <ReCAPTCHA
-                ref={joinClassRecaptchaRef}
-                sitekey={recaptchaSiteKey}
-                size="invisible"
-              />
-            )}
-            <Form {...joinClassForm}>
-              <form onSubmit={joinClassForm.handleSubmit(handleJoinClassSubmit)} className="space-y-4">
-                <FormField
-                  control={joinClassForm.control}
-                  name="friendlyId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel htmlFor="friendlyIdInput">Friendly Class ID</FormLabel>
-                      <FormControl>
-                        <div className="flex gap-2">
-                          <Input
-                            id="friendlyIdInput"
-                            placeholder="e.g., AB12CD"
-                            {...field}
-                            className="uppercase"
-                            onChange={(e) => field.onChange(e.target.value.toUpperCase())}
-                            disabled={isJoiningClass}
-                          />
-                          <Button type="submit" disabled={isJoiningClass || !joinClassForm.formState.isValid}>
-                            {isJoiningClass ? <Loader2 className="h-4 w-4 animate-spin" /> : "Join Class"}
-                          </Button>
-                        </div>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </form>
-            </Form>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-lg">
+       <Card className="shadow-lg mb-10">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Ticket className="h-6 w-6 text-accent" />
               Redeem Credit Voucher
             </CardTitle>
-            <CardDescription>Enter a voucher code to add credits to your account.</CardDescription>
+            <CardDescription>Have a voucher code? Enter it here to add credits to your account. Some vouchers may also auto-enroll you in a class.</CardDescription>
           </CardHeader>
           <CardContent>
-             {isRecaptchaEnabled && recaptchaSiteKey && (
-              <ReCAPTCHA
-                ref={redeemVoucherRecaptchaRef}
-                sitekey={recaptchaSiteKey}
-                size="invisible"
-              />
-            )}
             <Form {...redeemVoucherForm}>
               <form onSubmit={redeemVoucherForm.handleSubmit(handleRedeemVoucher)} className="space-y-4">
                 <FormField
@@ -396,7 +275,6 @@ export default function ClassesPage() {
             </Form>
           </CardContent>
         </Card>
-      </div>
 
 
       <section className="mb-10">
@@ -405,7 +283,7 @@ export default function ClassesPage() {
           <h2 className="text-2xl font-semibold text-secondary">My Enrolled Classes ({myClasses.length})</h2>
         </div>
         {myClasses.length === 0 ? (
-          <p className="text-muted-foreground italic">You are not currently enrolled in any classes. Use a Friendly Class ID from your teacher to join a class.</p>
+          <p className="text-muted-foreground italic">You are not currently enrolled in any classes. Browse available classes below to join.</p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {myClasses.map(classItem => {
@@ -472,7 +350,49 @@ export default function ClassesPage() {
         )}
       </section>
 
-      {allClasses.length === 0 && !loadingAllClasses && myClasses.length === 0 && (
+      <section className="mb-10">
+        <div className="flex items-center gap-2 mb-4">
+          <UserPlus className="h-6 w-6 text-green-600" />
+          <h2 className="text-2xl font-semibold text-green-700">Available Classes to Join ({availableClasses.length})</h2>
+        </div>
+        {availableClasses.length === 0 ? (
+          <p className="text-muted-foreground italic">There are no other available classes at the moment.</p>
+        ) : (
+           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {availableClasses.map(classItem => {
+              const hasPendingRequest = classItem.pendingJoinRequests && Object.keys(classItem.pendingJoinRequests).some(key => key === user?.uid);
+              return (
+                <Card key={classItem.id} className="shadow-md flex flex-col">
+                  <CardHeader className="flex-grow">
+                    <CardTitle>{classItem.name}</CardTitle>
+                     <p className="text-sm text-muted-foreground flex items-center gap-1 pt-1">
+                      <School className="h-4 w-4 opacity-70" /> Instructor: {classItem.instructorName}
+                    </p>
+                     {classItem.friendlyId && (
+                       <p className="text-xs text-muted-foreground mt-1">Class ID: <span className="font-medium">{classItem.friendlyId}</span></p>
+                    )}
+                    <CardDescription className="pt-2">{classItem.description}</CardDescription>
+                  </CardHeader>
+                  <CardFooter>
+                    <Button
+                      className="w-full"
+                      variant={hasPendingRequest ? "secondary" : "default"}
+                      onClick={() => openRequestToJoinDialog(classItem)}
+                      disabled={hasPendingRequest}
+                    >
+                      <UserPlus className="mr-2 h-4 w-4" />
+                      {hasPendingRequest ? "Request Pending" : "Request to Join"}
+                    </Button>
+                  </CardFooter>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+
+      {allClasses.length === 0 && !loadingAllClasses && (
          <Card className="shadow-lg text-center mt-10">
           <CardHeader>
             <CardTitle className="flex items-center justify-center gap-2">
@@ -482,13 +402,25 @@ export default function ClassesPage() {
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground">
-              It seems there are no classes configured in the system yet, or you haven't joined any.
-              Please ask your teacher for a Friendly Class ID to join.
+              It seems there are no classes configured in the system yet.
             </p>
           </CardContent>
         </Card>
       )}
     </div>
+    {selectedClassForRequest && user && userProfile && (
+        <RequestToJoinClassDialog
+            isOpen={isRequestJoinDialogOpen}
+            onOpenChange={setIsRequestJoinDialogOpen}
+            classToJoin={selectedClassForRequest}
+            user={user}
+            userProfile={userProfile}
+            onJoinRequestSent={() => {
+                fetchClassesAndQuizzes(); // Refresh the list to show pending status
+                setIsRequestJoinDialogOpen(false);
+            }}
+        />
+    )}
     </>
   );
 }

@@ -207,16 +207,3 @@ body {
     100% { transform: translate(0, 0) scale(1.2); }
   }
 }
-
-/* Position the reCAPTCHA badge and make it expand on hover */
-.grecaptcha-badge {
-  position: fixed !important;
-  bottom: 0 !important;
-  right: 0 !important;
-  margin: 0 !important;
-  z-index: 99999 !important;
-  transform: none !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-  pointer-events: auto !important;
-}

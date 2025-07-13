@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
 import { getForumTopicById, getForumPostsForTopic, createForumPost, type ForumTopic, type ForumPost } from '@/services/forum-service';
@@ -18,7 +18,6 @@ import { Loader2, LogIn, ShieldAlert, CircleDollarSign, MessageSquareText, Send,
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import { format, formatDistanceToNow } from 'date-fns';
-import ReCAPTCHA from 'react-google-recaptcha'; // Added ReCAPTCHA import
 
 const MINIMUM_CREDITS_FOR_FORUM = 50;
 
@@ -28,7 +27,7 @@ export default function ForumTopicPage() {
   const topicId = params.topicId as string;
   const { toast } = useToast();
 
-  const { user, userProfile, loading: authLoading, profileLoading } = useAuth();
+  const { user, userProfile, loading: authLoading, profileLoading, recaptchaRef } = useAuth();
 
   const [topic, setTopic] = useState<ForumTopic | null>(null);
   const [posts, setPosts] = useState<ForumPost[]>([]);
@@ -37,9 +36,7 @@ export default function ForumTopicPage() {
   const [isPosting, setIsPosting] = useState(false);
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const recaptchaRef = useRef<ReCAPTCHA>(null);
   const isRecaptchaEnabled = process.env.NEXT_PUBLIC_RECAPTCHA_ENABLED === "true";
-  const recaptchaSiteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
 
   const form = useForm<CreateForumPostFormValues>({
     resolver: zodResolver(CreateForumPostSchema),
@@ -112,7 +109,7 @@ export default function ForumTopicPage() {
     }
     setIsPosting(true);
 
-    if (isRecaptchaEnabled && recaptchaRef.current && recaptchaSiteKey) {
+    if (isRecaptchaEnabled && recaptchaRef.current) {
       try {
         const token = await recaptchaRef.current.executeAsync();
         if (!token) {
@@ -229,13 +226,6 @@ export default function ForumTopicPage() {
 
   return (
     <div className="my-auto flex flex-col flex-grow h-[calc(100vh-180px)] sm:h-[calc(100vh-200px)]">
-      {isRecaptchaEnabled && recaptchaSiteKey && (
-        <ReCAPTCHA
-          ref={recaptchaRef}
-          sitekey={recaptchaSiteKey}
-          size="invisible"
-        />
-      )}
       <Card className="shadow-xl flex flex-col flex-grow overflow-hidden">
         <CardHeader className="border-b">
           <Button variant="ghost" size="sm" asChild className="mb-2 self-start px-1 text-muted-foreground hover:text-primary">
