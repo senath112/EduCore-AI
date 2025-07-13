@@ -1,5 +1,5 @@
 [![Netlify Status](https://api.netlify.com/api/v1/badges/ceca7de4-698d-41a1-b520-2d988072ad82/deploy-status)](https://app.netlify.com/projects/senathsethmika/deploys)
-# EduCore AI – Real-time AI Help for A/L Students in Sri Lanka 🇱🇰
+# EduCore AI – Real-time AI Help for A/L Students in Sri Lanka 🇱🇰 
 
 **EduCore AI** is a powerful educational assistant built for Sri Lankan **Advanced Level (A/L)** students studying **Combined Mathematics, Physics, Chemistry, or Biology**. Powered by cutting-edge AI, it provides **instant, syllabus-aligned answers** to academic questions — 24/7.
 
