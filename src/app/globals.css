@@ -211,13 +211,12 @@ body {
 /* Position the reCAPTCHA badge and make it expand on hover */
 .grecaptcha-badge {
   position: fixed !important;
-  bottom: 1rem !important;
-  right: -150px !important; /* Start mostly off-screen to the right */
-
-  transition: right 0.3s ease !important;
-  z-index: 49 !important;
+  bottom: 0.5rem !important;     /* Lower and tighter to bottom */
+  right: 0.5rem !important;      /* Flush to the right */
+  z-index: 9999 !important;      /* Ensure it's always on top */
+  transition: transform 0.3s ease !important;
   box-shadow: 0px 2px 10px rgba(0,0,0,0.2) !important;
-  border-radius: 3px !important;
+  border-radius: 6px !important;
   overflow: hidden !important;
 }
 
