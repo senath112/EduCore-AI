@@ -149,3 +149,8 @@ export const AddPlannerEntrySchema = z.object({
   durationMinutes: values.durationMinutes === '' ? undefined : values.durationMinutes,
 }));
 export type AddPlannerEntryFormValues = z.infer<typeof AddPlannerEntrySchema>;
+
+export const ClassJoinRequestSchema = z.object({
+  message: z.string().max(200, "Message cannot exceed 200 characters.").optional(),
+});
+export type ClassJoinRequestFormValues = z.infer<typeof ClassJoinRequestSchema>;

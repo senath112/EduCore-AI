@@ -2,13 +2,14 @@
 "use client";
 
 import type { ReactNode } from 'react';
-import { createContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useState, useEffect, useCallback, useRef } from 'react';
 import type { User, Auth } from 'firebase/auth';
 import { getAuth, onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
 import { app } from '@/lib/firebase';
 import { getUserProfile, updateUserCredits, type UserProfile, saveUserData, updateUserActivityAndStreak } from '@/services/user-service';
 import { Loader2 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
+import type ReCAPTCHA from 'react-google-recaptcha';
 
 type AuthContextType = {
   user: User | null;
@@ -23,9 +24,11 @@ type AuthContextType = {
   triggerStreakUpdate: () => Promise<void>;
   promptForUserDetails: boolean;
   setPromptForUserDetails: (value: boolean) => void;
+  deductCreditForAiPlanner: (amountToDeduct: number) => Promise<boolean>;
+  recaptchaRef: React.RefObject<ReCAPTCHA>; // Add reCAPTCHA ref to context
 };
 
-const authInstanceGlobal: Auth = getAuth(app); // Renamed to avoid conflict
+const authInstanceGlobal: Auth = getAuth(app); 
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -36,7 +39,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profileLoading, setProfileLoading] = useState(true);
   const [promptForUserDetails, setPromptForUserDetails] = useState(false);
   const { toast } = useToast();
-  const authInstance = authInstanceGlobal; // Use the globally initialized instance
+  const authInstance = authInstanceGlobal;
+  const recaptchaRef = useRef<ReCAPTCHA>(null); // Create the ref here
 
   const fetchUserProfile = useCallback(async (currentUser: User | null) => {
     if (currentUser) {
@@ -132,6 +136,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return false;
     }
   };
+  
+    const deductCreditForAiPlanner = async (amountToDeduct: number): Promise<boolean> => {
+    if (!user || userProfile === null) {
+      console.warn("Deduct credit called without user or profile.");
+      return false;
+    }
+    
+    if (userProfile.isAdmin || userProfile.isTeacher) {
+      console.log("Admin or Teacher user (AI Planner): credit deduction bypassed.");
+      return true;
+    }
+
+    if (typeof userProfile.credits !== 'number' || userProfile.credits < amountToDeduct) {
+      console.log(`User has insufficient credits for AI Planner. Needs ${amountToDeduct}, has ${userProfile.credits}.`);
+      return false;
+    }
+    
+    const newCreditAmount = userProfile.credits - amountToDeduct;
+    try {
+      await updateUserCredits(user.uid, newCreditAmount);
+      await refreshUserProfile(); 
+      return true;
+    } catch (error) {
+      console.error("Failed to deduct credit for AI Planner:", error);
+      return false;
+    }
+  };
+
 
   const deductCreditForFlashcards = async (amountToDeduct: number): Promise<boolean> => {
     if (!user || userProfile === null) {
@@ -196,7 +228,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refreshUserProfile,
       triggerStreakUpdate,
       promptForUserDetails,
-      setPromptForUserDetails
+      setPromptForUserDetails,
+      deductCreditForAiPlanner,
+      recaptchaRef // Provide the ref through context
     }}>
       {children}
     </AuthContext.Provider>

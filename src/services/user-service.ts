@@ -493,10 +493,31 @@ export async function enrollInClass(userId: string, classId: string): Promise<vo
   const userProfileRef = ref(database, `users/${userId}/profile/enrolledClassIds/${classId}`);
   try {
     await set(userProfileRef, true);
+    await awardBadge(userId, 'class_joiner');
     const profileUpdateRef = ref(database, `users/${userId}/profile`);
     await update(profileUpdateRef, { lastUpdatedAt: new Date().toISOString() });
   } catch (error) {
     console.error(`Error enrolling user ${userId} in class ${classId}:`, error);
+    throw error;
+  }
+}
+
+export async function sendJoinRequest(classId: string, studentUserId: string, studentName: string | null, studentEmail: string | null, message?: string): Promise<void> {
+  if (!classId || !studentUserId) {
+    throw new Error("Class ID and Student User ID are required to send a join request.");
+  }
+  const requestRef = ref(database, `classes/${classId}/pendingJoinRequests/${studentUserId}`);
+  const requestData = {
+    userId: studentUserId,
+    userName: studentName || "Unknown Name",
+    userEmail: studentEmail || "Unknown Email",
+    message: message || "",
+    requestedAt: new Date().toISOString(),
+  };
+  try {
+    await set(requestRef, requestData);
+  } catch (error) {
+    console.error(`Error sending join request for student ${studentUserId} to class ${classId}:`, error);
     throw error;
   }
 }
