@@ -211,15 +211,12 @@ body {
 /* Position the reCAPTCHA badge and make it expand on hover */
 .grecaptcha-badge {
   position: fixed !important;
-  bottom: 0.5rem !important;     /* Lower and tighter to bottom */
-  right: 0.5rem !important;      /* Flush to the right */
-  z-index: 9999 !important;      /* Ensure it's always on top */
-  transition: transform 0.3s ease !important;
-  box-shadow: 0px 2px 10px rgba(0,0,0,0.2) !important;
-  border-radius: 6px !important;
-  overflow: hidden !important;
-}
-
-.grecaptcha-badge:hover {
-  right: 1rem !important; /* Slide into view on hover */
+  bottom: 0 !important;
+  right: 0 !important;
+  margin: 0 !important;
+  z-index: 99999 !important;
+  transform: none !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
 }
