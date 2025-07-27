@@ -3,7 +3,7 @@
 
 **EduCore AI** is a powerful educational assistant built for Sri Lankan **Advanced Level (A/L)** students studying **Combined Mathematics, Physics, Chemistry, or Biology**. Powered by cutting-edge AI, it provides **instant, syllabus-aligned answers** to academic questions — 24/7.
 
----
+--- 
 
 ## 🎯 Who Is It For?
 
